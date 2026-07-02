@@ -126,6 +126,9 @@ def main(argv=None) -> int:
                     help="сверять N таблиц параллельно (соединение на поток)")
     pc.add_argument("--resume", action="store_true",
                     help="продолжить прерванную сверку с чекпоинта")
+    pc.add_argument("--full", action="store_true",
+                    help="игнорировать сохранённые инкрементальные "
+                         "watermark'и — полная сверка (стейт обновится)")
 
     pd = sub.add_parser("demo", help="Демо на встроенных данных с расхождениями")
     pd.add_argument("--outdir", default="demo_out", help="каталог для демо-файлов")
@@ -172,7 +175,8 @@ def main(argv=None) -> int:
 
         with progress_ui:
             run = engine.run(cfg, on_progress=on_progress,
-                             resume=getattr(args, "resume", False))
+                             resume=getattr(args, "resume", False),
+                             full=getattr(args, "full", False))
     except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Ошибка:[/bold red] {e}")
         return 2

@@ -90,9 +90,15 @@ def compare_table(
     initial: Optional[TableResult] = None,
     checkpoint=None,
     checkpoint_every: int = 0,
+    track_max_idx: Optional[int] = None,
 ) -> TableResult:
     # initial — восстановленный частичный результат (resume): счётчики
-    # продолжают накапливаться поверх него
+    # продолжают накапливаться поверх него.
+    # track_max_idx — индекс watermark-колонки в columns (инкрементальный
+    # режим): во время merge отслеживается максимум НОРМАЛИЗОВАННЫХ значений
+    # этой колонки по обеим сторонам. Результат возвращается ДИНАМИЧЕСКИМ
+    # атрибутом res.max_tracked (models.py не расширяем; в dataclasses.asdict
+    # и чекпоинты атрибут не попадает). None — если строк не было.
     res = initial if initial is not None else TableResult(
         table=table, pk=list(pk_columns))
     pk_idx = [list(columns).index(c) for c in pk_columns]
@@ -114,7 +120,33 @@ def compare_table(
     last_ckpt = 0
     base_src, base_dst = res.src_rows, res.dst_rows   # база из initial (resume)
 
+    # res-независимый максимум watermark-колонки (см. док у track_max_idx)
+    max_tracked = None
+
+    def track(stream: _Stream) -> None:
+        """Учитывает текущую строку потока в максимуме watermark-колонки."""
+        nonlocal max_tracked
+        if stream.exhausted:
+            return
+        v = stream.n[track_max_idx]
+        if v is None:
+            return
+        if max_tracked is None:
+            max_tracked = v
+            return
+        try:                            # разнотипье — фолбэк на строки (как _lt)
+            greater = max_tracked < v
+        except TypeError:
+            greater = str(max_tracked) < str(v)
+        if greater:
+            max_tracked = v
+
     while not (S.exhausted and D.exhausted):
+        if track_max_idx is not None:
+            # каждая потреблённая строка хотя бы раз «текущая» в начале
+            # итерации; повторный учёт той же строки максимум не меняет
+            track(S)
+            track(D)
         if progress is not None:
             n = S.count + D.count
             if n - last_report >= 20_000:
@@ -186,4 +218,6 @@ def compare_table(
         progress(S.count + D.count)
     res.src_rows = base_src + S.count
     res.dst_rows = base_dst + D.count
+    if track_max_idx is not None:
+        res.max_tracked = max_tracked   # динамический атрибут (см. выше)
     return res

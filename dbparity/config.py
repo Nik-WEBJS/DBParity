@@ -44,6 +44,10 @@ class Config:
                                         # при плотном ключе)
     checkpoint: Optional[str] = None    # путь к файлу чекпоинта (вкл. resume)
     checkpoint_every_rows: int = 500000
+    # Инкрементальный режим: {таблица: watermark-колонка}. Колонка существует
+    # в обеих БД и монотонно растёт при изменении строки (timestamp/версия);
+    # следующий прогон перепроверяет только строки с wm_col >= watermark.
+    incremental: dict = field(default_factory=dict)
     retry_attempts: int = 1             # 1 = без ретраев
     retry_backoff_s: float = 2.0
     report: ReportConfig = field(default_factory=ReportConfig)
@@ -67,6 +71,7 @@ class Config:
             "strategy": self.strategy,
             "retry_attempts": self.retry_attempts,
             "checkpoint": bool(self.checkpoint),
+            "incremental": dict(self.incremental),
         }
 
 
@@ -109,7 +114,7 @@ _TOP_LEVEL_KEYS = {
     "source", "target", "tables", "pk_overrides", "exclude_columns", "rules",
     "sample_limit", "batch_size", "mask_values", "workers", "strategy",
     "hash_leaf_rows", "checkpoint", "checkpoint_every_rows",
-    "retry_attempts", "retry_backoff_s", "report",
+    "retry_attempts", "retry_backoff_s", "report", "incremental",
 }
 
 # Минимумы целочисленных параметров (согласованы с config_from_dict)
@@ -282,6 +287,18 @@ def validate_config_dict(data: dict) -> list[str]:
                 problems.append(f"{key}.{table}: ожидается список "
                                 f"имён колонок (строк)")
 
+    # --- инкрементальный режим (watermark-колонки) ------------------------------
+    if data.get("incremental") is not None:
+        mapping = data["incremental"]
+        if not isinstance(mapping, dict):
+            problems.append("incremental: ожидается словарь "
+                            "{таблица: watermark-колонка}")
+        else:
+            for table, col in mapping.items():
+                if not isinstance(col, str) or not col.strip():
+                    problems.append(f"incremental.{table}: ожидается имя "
+                                    f"watermark-колонки (строка)")
+
     # --- отчёты и чекпоинт -----------------------------------------------------
     report = data.get("report")
     if report is not None:
@@ -338,6 +355,8 @@ def config_from_dict(data: dict) -> Config:
         checkpoint=(str(data["checkpoint"]) if data.get("checkpoint") else None),
         checkpoint_every_rows=max(1000, int(data.get("checkpoint_every_rows",
                                                      500000))),
+        incremental={str(k).lower(): str(v).lower()
+                     for k, v in (data.get("incremental") or {}).items()},
         retry_attempts=max(1, int(data.get("retry_attempts", 1))),
         retry_backoff_s=max(0.0, float(data.get("retry_backoff_s", 2.0))),
         report=ReportConfig(html=report.get("html"), json=report.get("json")),

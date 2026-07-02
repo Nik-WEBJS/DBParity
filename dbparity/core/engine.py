@@ -9,6 +9,7 @@ from ..adapters import build_adapter
 from ..config import Config
 from .checkpoint import Checkpointer, config_fingerprint
 from .compare import compare_table
+from .incremental import IncrementalState, default_state_path, state_fingerprint
 from .models import RunResult, TableResult
 from .normalize import Normalizer
 from .schema_diff import diff_schemas
@@ -17,8 +18,14 @@ from .segment import digest_eligible, hash_compare_table
 
 def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
                  ss, ds, norm_src: Normalizer, norm_dst: Normalizer,
-                 on_progress, resume_snapshot=None, checkpoint_cb=None) -> TableResult:
-    """Сверка одной таблицы. Ошибки БД ПРОБРАСЫВАЮТСЯ (retry решает вызывающий)."""
+                 on_progress, resume_snapshot=None, checkpoint_cb=None,
+                 incr_state=None, full: bool = False) -> TableResult:
+    """Сверка одной таблицы. Ошибки БД ПРОБРАСЫВАЮТСЯ (retry решает вызывающий).
+
+    incr_state — IncrementalState (инкрементальный режим), full=True —
+    игнорировать сохранённый watermark (полная сверка), но максимум
+    watermark-колонки всё равно отслеживается для обновления стейта.
+    """
     t0 = time.perf_counter()
     src_names = {c.name.lower(): c.name for c in ss.columns}
     dst_names = {c.name.lower(): c.name for c in ds.columns}
@@ -27,6 +34,7 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
                    if c.name.lower() in dst_names
                    and c.name.lower() not in excluded]
     pk = config.pk_overrides.get(t) or [p.lower() for p in ss.pk]
+    wm_col = config.incremental.get(t)      # watermark-колонка либо None
 
     if not pk:
         tr = TableResult(table=t, pk=[], error=(
@@ -34,6 +42,11 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
     elif any(p not in common_cols for p in pk):
         tr = TableResult(table=t, pk=pk, error=(
             "PK-колонки отсутствуют в общем наборе колонок обеих таблиц"))
+    elif wm_col is not None and wm_col not in common_cols:
+        tr = TableResult(table=t, pk=pk, error=(
+            f"Инкрементальный режим: watermark-колонка '{wm_col}' "
+            f"отсутствует в общем наборе колонок обеих таблиц — "
+            f"проверьте карту incremental в конфиге"))
     else:
         src_log = {c.name.lower(): c.logical for c in ss.columns}
         dst_log = {c.name.lower(): c.logical for c in ds.columns}
@@ -48,6 +61,13 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
         progress = (lambda n: on_progress(t, n)) if on_progress else None
         eligible, why = digest_eligible(
             config, src, dst, pk, common_cols, src_log, dst_log)
+        # hash-режим несовместим с инкрементом (watermark отслеживается
+        # только при потоковом merge) — инкремент побеждает
+        incr_beats_hash = eligible and wm_col is not None
+        if incr_beats_hash:
+            eligible, why = False, "инкрементальный режим"
+        incr_wm = None          # применённый инкрементальный фильтр (значение)
+        full_skip = False       # full=True проигнорировал сохранённый watermark
         if eligible:
             tr = hash_compare_table(
                 t, src, dst, src_name, dst_name, common_cols, pk[0],
@@ -66,6 +86,27 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
                          if start_from is not None else None)
             dst_range = ((dst_names[pk[0]], start_from, None)
                          if start_from is not None else None)
+            # --- инкрементальный фильтр по watermark-колонке ----------------
+            # pk_range адаптеров фильтрует по ЛЮБОЙ колонке (lo <= col),
+            # сортировка остаётся по PK — merge корректен. Максимум колонки
+            # отслеживается ВСЕГДА (track_kw), даже при full=True.
+            track_kw = {}
+            if wm_col is not None:
+                track_kw = {"track_max_idx": common_cols.index(wm_col)}
+                last_wm = (incr_state.last_watermark(t)
+                           if incr_state is not None else None)
+                if last_wm is not None and start_from is not None:
+                    # resume-снапшот занял pk_range PK-watermark'ом —
+                    # инкремент и resume взаимоисключимы для таблицы
+                    initial.warnings.append(
+                        "Возобновление с чекпоинта: инкрементальный фильтр "
+                        "в этом прогоне не применялся")
+                elif last_wm is not None and full:
+                    full_skip = True
+                elif last_wm is not None:
+                    incr_wm = last_wm
+                    src_range = (src_names[wm_col], last_wm, None)
+                    dst_range = (dst_names[wm_col], last_wm, None)
             ckpt_kw = {}
             if checkpoint_cb is not None and len(pk) == 1:
                 ckpt_kw = {"checkpoint": checkpoint_cb,
@@ -95,8 +136,21 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
                 progress=progress,
                 initial=initial,
                 **ckpt_kw,
+                **track_kw,
             )
-        if config.strategy == "hash" and not eligible:
+        if incr_beats_hash:
+            tr.warnings.append(
+                f"Инкрементальный режим: hash-сверка отключена — "
+                f"потоковая сверка (watermark-колонка '{wm_col}')")
+        if incr_wm is not None:
+            tr.warnings.append(
+                f"Инкрементальная сверка: строки с {wm_col} >= {incr_wm!r}; "
+                f"missing/extra среди изменённых строк = дрейф dual-write")
+        if full_skip:
+            tr.warnings.append(
+                "Полная сверка (--full): сохранённый watermark проигнорирован, "
+                "стейт будет обновлён")
+        if config.strategy == "hash" and not eligible and not incr_beats_hash:
             tr.warnings.append(
                 f"hash-режим недоступен ({why}) — использована потоковая сверка")
         if pk_text and binary_sort:
@@ -114,12 +168,15 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
     return tr
 
 
-def run(config: Config, on_progress=None, resume: bool = False) -> RunResult:
+def run(config: Config, on_progress=None, resume: bool = False,
+        full: bool = False) -> RunResult:
     """Выполняет сверку.
 
     on_progress(table, rows_done) — колбэк прогресса (из потоков при workers>1).
     resume=True — продолжить с чекпоинта (файл из config.checkpoint либо
     авто-имя .dbparity_ckpt_<fp>.json).
+    full=True — игнорировать сохранённые инкрементальные watermark'и
+    (полная сверка); новый watermark по итогам прогона всё равно фиксируется.
     """
     started = datetime.now(timezone.utc)
     src = build_adapter(config.source)
@@ -163,6 +220,13 @@ def run(config: Config, on_progress=None, resume: bool = False) -> RunResult:
         path = config.checkpoint or f".dbparity_ckpt_{fp[:12]}.json"
         ckpt = Checkpointer.load_or_create(path, fp, resume)
 
+    # Инкрементальный стейт создаётся только при непустой карте incremental;
+    # запись потокобезопасна (лок внутри IncrementalState) — workers>1 ок
+    incr = None
+    if config.incremental:
+        ifp = state_fingerprint(config)
+        incr = IncrementalState.load_or_create(default_state_path(ifp), ifp)
+
     def job(t: str) -> TableResult:
         if ckpt is not None:
             done = ckpt.done_table(t)
@@ -185,9 +249,17 @@ def run(config: Config, on_progress=None, resume: bool = False) -> RunResult:
                                   dst_tables[t], src_schemas[t],
                                   dst_schemas[t], norm_src, norm_dst,
                                   on_progress,
-                                  resume_snapshot=snap, checkpoint_cb=cb)
+                                  resume_snapshot=snap, checkpoint_cb=cb,
+                                  incr_state=incr, full=full)
                 if ckpt is not None:
                     ckpt.table_done(tr)
+                if incr is not None and tr.error is None:
+                    # max_tracked — динамический атрибут compare_table
+                    # (максимум watermark-колонки); None (нет строк) —
+                    # оставляем старый watermark
+                    new_wm = getattr(tr, "max_tracked", None)
+                    if new_wm is not None:
+                        incr.update(t, new_wm)  # update() сохраняет под локом
                 return tr
             except Exception as e:  # noqa: BLE001 — сетевые/БД ошибки → retry
                 last_err = e
