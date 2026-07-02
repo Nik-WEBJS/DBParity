@@ -27,7 +27,7 @@ gives you a report you can put on the table at project sign-off.
 ```console
 $ dbparity compare -c config.yaml
 
-           DBParity v0.3.0: Oracle PROD  →  PostgreSQL NEW
+           DBParity v0.5.0: Oracle PROD  →  PostgreSQL NEW
 ┏━━━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
 ┃ Table     ┃  Src ┃  Dst ┃ Matched ┃ Diff  ┃ Missing   ┃ Extra  ┃ Dup   ┃ Status  ┃
 ┡━━━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
@@ -42,8 +42,9 @@ $ echo $?
 1
 ```
 
-> **Status: v0.3 alpha.** Core engine and the PostgreSQL adapter are tested
-> against a live PostgreSQL 18. The Oracle adapter is written but not yet
+> **Status: v0.5 alpha.** Core engine (65 tests) and the PostgreSQL adapter
+> are tested against a live PostgreSQL 18, runs survive network drops
+> (checkpoint/resume + retries). The Oracle adapter is written but not yet
 > battle-tested — **testers with real Oracle instances are very welcome!**
 
 ## ✨ Features
@@ -56,6 +57,7 @@ $ echo $?
 - 🤖 **CI/CD-friendly** — exit codes `0/1/2`, make the comparison a mandatory gate before switching traffic
 - 🧵 **Parallel tables & live progress** — `workers: N`, connection per thread
 - 🔁 **Survives network drops** — automatic retries with backoff plus checkpoint/resume: a multi-hour run continues from the last PK watermark (`--resume`), completed tables are never re-compared
+- ✅ **Config validation** — `dbparity validate` catches typos and missing fields with suggestions, before any DB connection
 
 ## 🪤 What it catches (and what it doesn't flag)
 
@@ -74,6 +76,7 @@ schema drift — while **not** flagging things that only *look* different:
 | `0/1/'Y'/'N'` vs `boolean` | numeric mapping |
 | BLOBs | MD5 comparison |
 | timestamp precision (µs vs ns) | truncation to common precision |
+| text-PK sort order differs by collation | binary collation forced on both sides (`COLLATE "C"` / `NLSSORT BINARY`) |
 
 ## ⚙️ How it works
 
@@ -168,7 +171,7 @@ understates real gains on PostgreSQL/Oracle where hashing is native C.
 
 ```bash
 pip install -e ".[dev,postgres]"
-pytest tests/ -v                      # 44 tests
+pytest tests/ -v                      # 65 tests
 
 # against a live PostgreSQL:
 docker compose up -d
@@ -181,13 +184,16 @@ node scripts/pglite_server.mjs &
 DBPARITY_PG_DSN="host=127.0.0.1 port=5433 user=postgres dbname=postgres" pytest -v
 ```
 
-CI runs the suite on Python 3.10–3.12 plus live integration against PostgreSQL 16.
+CI runs the suite on Python 3.10–3.12, live integration against
+PostgreSQL 16, and a benchmark workflow that fails PRs on performance
+regressions.
 
 ## 🗺️ Roadmap
 
-Checkpoint/resume for interrupted runs → network retries → Oracle/MSSQL
-hardening with community feedback → parallel-run mode for dual-write cutovers
-→ v1.0 with frozen config/report formats. Details: [ROADMAP.md](ROADMAP.md).
+Oracle/MSSQL hardening with community feedback → parallel-run mode for
+dual-write cutovers → frozen config/report formats → v1.0.
+Done so far: hash mode, checkpoint/resume, retries, binary collations,
+config validation, CI benchmarks. Details: [ROADMAP.md](ROADMAP.md).
 
 ## 🤝 Contributing
 
