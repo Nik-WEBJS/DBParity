@@ -1,62 +1,114 @@
-# DBParity
+<div align="center">
 
-**Prove your database migration didn't lose or corrupt a single row.**
+# 🛡️ DBParity
 
-[Русская версия →](README.ru.md)
+### Prove your database migration didn't lose or corrupt a single row
 
-DBParity is a data equivalence verifier for database migrations
-(Oracle / MSSQL / SQLite → PostgreSQL). It streams both databases in
-primary-key order, compares them row by row with migration-aware
-normalization, and produces a client-ready HTML report you can put on
-the table at project sign-off.
+[![CI](https://github.com/Nik-WEBJS/DBParity/actions/workflows/ci.yml/badge.svg)](https://github.com/Nik-WEBJS/DBParity/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 
-> Status: **v0.1 alpha**. Core engine and PostgreSQL adapter are tested
-> (including against a live PostgreSQL 18). The Oracle adapter is
-> written but not yet battle-tested — **testers with real Oracle
-> instances are very welcome**, please open an issue.
+**Oracle / MSSQL / SQLite → PostgreSQL** · streaming row-by-row + DB-side hash mode · client-ready HTML reports
 
-## Why
+[🇷🇺 Русская версия](README.ru.md) · [📊 Live demo report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/Nik-WEBJS/DBParity/main/docs/demo_report.html) · [🗺️ Roadmap](ROADMAP.md) · [🐛 Report a bug](https://github.com/Nik-WEBJS/DBParity/issues)
 
-Migration projects rarely fail at code conversion — they fail at data
-reconciliation. Gartner predicts >70% of mainframe exit projects will
-fail, largely due to overestimating AI code conversion; Birmingham City
-Council's ERP migration went from a £19M estimate to £144M+, hinging on
-broken reconciliation. Plenty of tools convert schemas and SQL; very few
-*prove the data arrived intact*.
+</div>
 
-## What it catches
+---
 
-Real diffs — lost rows, extra rows, changed values, duplicate PKs,
-schema drift (missing columns, type changes, PK mismatch) — while **not**
-flagging things that only look different:
+Migration projects rarely fail at code conversion — they fail at **data
+reconciliation**. Gartner predicts >70% of mainframe exit projects will fail;
+Birmingham City Council's ERP migration grew from a **£19M estimate to £144M+**,
+hinging on broken reconciliation. Plenty of tools convert schemas and SQL.
+Very few *prove the data arrived intact*. DBParity does exactly that — and
+gives you a report you can put on the table at project sign-off.
+
+```console
+$ dbparity compare -c config.yaml
+
+           DBParity v0.3.0: Oracle PROD  →  PostgreSQL NEW
+┏━━━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
+┃ Table     ┃  Src ┃  Dst ┃ Matched ┃ Diff  ┃ Missing   ┃ Extra  ┃ Dup   ┃ Status  ┃
+┡━━━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
+│ customers │ 1200 │ 1199 │    1193 │     4 │         3 │      2 │     0 │ DIFF    │
+│ orders    │ 5000 │ 5000 │    4997 │     3 │         0 │      0 │     0 │ DIFF    │
+│ products  │  300 │  300 │     300 │     0 │         0 │      0 │     0 │ OK      │
+└───────────┴──────┴──────┴─────────┴───────┴───────────┴────────┴───────┴─────────┘
+╭──────────────────────────────────────────────────────────────────╮
+│ NOT EQUIVALENT — 12 differences found (99.85% match)             │
+╰──────────────────────────────────────────────────────────────────╯
+$ echo $?
+1
+```
+
+> **Status: v0.3 alpha.** Core engine and the PostgreSQL adapter are tested
+> against a live PostgreSQL 18. The Oracle adapter is written but not yet
+> battle-tested — **testers with real Oracle instances are very welcome!**
+
+## ✨ Features
+
+- 🔍 **Streaming merge by PK** — O(n) time, O(batch) memory. The table never sits in RAM, ~400K rows/s on the client path
+- ⚡ **Hash mode for huge tables** — both databases compute canonical md5 aggregates per PK bucket *in a single SQL scan*; only diverged buckets are transferred. 10× less network traffic on the benchmark
+- 🧠 **Migration-aware normalization** — knows the classic traps and doesn't cry wolf (see table below)
+- 📋 **Schema drift detection** — missing/extra columns, logical type changes, PK mismatches, case-insensitive matching (Oracle UPPER vs PG lower)
+- 📄 **Client-ready reports** — a single self-contained HTML file (dark theme, per-column drill-down, value masking for sensitive data) + machine-readable JSON
+- 🤖 **CI/CD-friendly** — exit codes `0/1/2`, make the comparison a mandatory gate before switching traffic
+- 🧵 **Parallel tables & live progress** — `workers: N`, connection per thread
+
+## 🪤 What it catches (and what it doesn't flag)
+
+Real diffs — lost rows, extra rows, changed values, duplicate and NULL PKs,
+schema drift — while **not** flagging things that only *look* different:
 
 | Migration trap | Handling |
 |---|---|
 | Oracle `''` == `NULL` (VARCHAR2) | normalized when source dialect is Oracle |
-| `1.50` vs `1.5` (NUMBER→NUMERIC) | Decimal comparison |
+| `1.50` vs `1.5` (NUMBER → NUMERIC) | Decimal comparison |
 | float noise | configurable epsilon |
 | timezones | normalize to UTC |
 | Oracle `DATE` carries time / PG `date` doesn't | optional midnight truncation |
 | `CHAR(n)` space padding | optional rtrim |
-| Unicode composition | NFC normalization |
+| Unicode composition (`ё` two ways) | NFC normalization |
 | `0/1/'Y'/'N'` vs `boolean` | numeric mapping |
 | BLOBs | MD5 comparison |
 | timestamp precision (µs vs ns) | truncation to common precision |
 
-## Quick start
+## ⚙️ How it works
+
+```mermaid
+flowchart LR
+    S[("Source<br/>Oracle · MSSQL · SQLite")] --> A1[adapter]
+    T[("Target<br/>PostgreSQL")] --> A2[adapter]
+    A1 --> H{"hash mode eligible?<br/>(numeric PK, safe types)"}
+    A2 --> H
+    H -- yes --> B["DB-side md5 buckets<br/>1 scan per side"]
+    B -- "diverged buckets only" --> M
+    H -- no --> M["streaming merge by PK<br/>+ canonical normalization"]
+    M --> R["HTML + JSON report<br/>exit code 0 / 1 / 2"]
+```
+
+The correctness property of hash mode: an imperfect canonical mapping can only
+cause extra drill-down (slower), **never a false skip** — every hash mismatch
+is re-verified by the row-level engine with full normalization.
+
+## 🚀 Quick start
 
 ```bash
-pip install -e ".[postgres]"        # from a cloned repo
-dbparity demo --outdir demo_out     # built-in demo with planted diffs
-# → open demo_out/dbparity_report.html
-dbparity compare -c config.yaml     # real comparison
+git clone https://github.com/Nik-WEBJS/DBParity && cd DBParity
+pip install -e ".[postgres]"          # + [oracle] / [mssql] as needed
+
+dbparity demo --outdir demo_out       # built-in demo with planted diffs
+open demo_out/dbparity_report.html    # see what your client will see
+
+dbparity compare -c config.yaml       # the real thing
 ```
 
 ### config.yaml
 
 ```yaml
 source:
-  type: oracle            # oracle | mssql | sqlite | postgres
+  type: oracle                # oracle | mssql | sqlite | postgres
   label: "Oracle PROD"
   user: app
   password: "..."
@@ -65,16 +117,20 @@ target:
   type: postgres
   label: "PostgreSQL NEW"
   dsn: "host=10.0.0.5 dbname=app user=app password=..."
+
 tables: [customers, orders]          # default: all common tables
 pk_overrides: {events: [id, ts]}     # when PK isn't declared in the DB
 exclude_columns: {orders: [etl_ts]}  # service columns
+
 rules:
   rtrim_strings: true
   float_epsilon: 1.0e-9
-mask_values: false                   # true → hide values in the report
-workers: 4                           # compare N tables in parallel
-strategy: auto                       # auto | stream | hash (see below)
+
+strategy: auto                       # auto | stream | hash
 hash_leaf_rows: 20000                # PK-bucket width for hash mode
+workers: 4                           # compare N tables in parallel
+mask_values: false                   # true → hide values in the report
+
 report:
   html: report.html
   json: report.json
@@ -82,68 +138,64 @@ report:
 
 ### Exit codes
 
-`0` — equivalent · `1` — differences found · `2` — run error.
-Use it as a mandatory CI/CD gate before switching traffic.
+| Code | Meaning |
+|---|---|
+| `0` | ✅ equivalent — safe to proceed |
+| `1` | ❌ differences found |
+| `2` | ⚠️ run error (connection, config) |
 
-## Performance
+## 📈 Performance
 
-Streaming merge, O(n) time, O(batch) memory — the full table never
-sits in RAM. `python3 bench/bench.py 1000000` (1M rows per side,
-7 columns): **~400K rows/s** with the type-compiled fast path
-(~310K generic).
+`python3 bench/bench.py 1000000` — 1M rows per side, 7 columns:
 
-**Hash mode** (`strategy: hash`, or `auto` when eligible): both databases
-compute canonical md5 aggregates per PK bucket in a single scan
-(`GROUP BY floor((pk-lo)/step)`); only mismatching buckets are streamed
-for detailed comparison. On the 300K-row bench with 3 planted diffs it
-transfers **60K rows instead of 600K (10×)** — the win that matters over
-a network. Correctness property: an imperfect canonical mapping only
-causes extra drill-down (slower), never a false skip. Eligibility:
-single numeric PK, column types number/text/bool (float/datetime/bytes
-fall back to stream automatically); a hash mismatch is always re-verified
-by the row-level engine with full normalization. Note: the sqlite bench
-implements md5 as a Python UDF, so its wall-time understates gains on
-PostgreSQL/Oracle where hashing is native.
+| Mode | Speed | Notes |
+|---|---|---|
+| generic streaming | ~310K rows/s | isinstance dispatch |
+| fast-path streaming | **~400K rows/s** | per-column compiled normalizers |
+| hash mode (3 diffs) | **60K rows transferred instead of 600K** | the win that matters over a network |
 
-## Testing
+sqlite bench implements md5 as a Python UDF, so hash-mode wall-time there
+understates real gains on PostgreSQL/Oracle where hashing is native C.
+
+## 🧪 Testing
 
 ```bash
 pip install -e ".[dev,postgres]"
-pytest tests/ -v
-```
+pytest tests/ -v                      # 44 tests
 
-Live-PostgreSQL integration test (any of the three):
-
-```bash
-# Docker
+# against a live PostgreSQL:
 docker compose up -d
 DBPARITY_PG_DSN="host=127.0.0.1 port=5432 dbname=dbparity user=postgres password=dbparity" \
   pytest tests/test_postgres_integration.py -v
 
-# or without Docker — PGlite (Postgres-in-WASM):
+# no Docker? PGlite (real Postgres compiled to WASM):
 npm install @electric-sql/pglite @electric-sql/pglite-socket
 node scripts/pglite_server.mjs &
-DBPARITY_PG_DSN="host=127.0.0.1 port=5433 user=postgres dbname=postgres" \
-  pytest tests/test_postgres_integration.py -v
+DBPARITY_PG_DSN="host=127.0.0.1 port=5433 user=postgres dbname=postgres" pytest -v
 ```
 
-CI runs the full suite on Python 3.10–3.12 plus the integration test
-against PostgreSQL 16.
+CI runs the suite on Python 3.10–3.12 plus live integration against PostgreSQL 16.
 
-## Roadmap
+## 🗺️ Roadmap
 
-DB-side segment hashing for 100M+ row tables · parallel-run mode ·
-resume after interruption · Oracle/MSSQL integration hardening ·
-web console on top of the engine.
+Checkpoint/resume for interrupted runs → network retries → Oracle/MSSQL
+hardening with community feedback → parallel-run mode for dual-write cutovers
+→ v1.0 with frozen config/report formats. Details: [ROADMAP.md](ROADMAP.md).
 
-Architecture notes (in Russian): [PLAN.md](PLAN.md).
-
-## Contributing
+## 🤝 Contributing
 
 The most valuable contribution right now is **a run against your real
-Oracle/MSSQL → PostgreSQL migration** and an issue with what broke.
-PRs welcome.
+Oracle/MSSQL → PostgreSQL migration** and an issue describing what broke.
+Architecture notes live in [PLAN.md](PLAN.md) (RU). PRs welcome.
 
-## License
+## 📄 License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 Nikita Fokin
+
+---
+
+<div align="center">
+
+*If DBParity saved your migration — ⭐ the repo so others can find it.*
+
+</div>

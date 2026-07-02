@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="ru" data-bs-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>DBParity — отчёт о сверке данных</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    .verdict-pct { font-size: 2.4rem; font-weight: 700; line-height: 1; }
+    .diff-src { color: var(--tblr-red); }
+    .diff-dst { color: var(--tblr-green); }
+    details > summary { cursor: pointer; }
+    .chart-box { position: relative; height: 260px; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="navbar navbar-expand-md d-print-none">
+    <div class="container-xl">
+      <h1 class="navbar-brand navbar-brand-autodark mb-0">
+        <span class="badge bg-blue text-white me-2">DB</span>Parity
+      </h1>
+      <div class="navbar-nav flex-row order-md-last align-items-center gap-2">
+        <span class="badge bg-azure-lt">Oracle PROD (эмуляция)</span>
+        <span class="text-secondary">→</span>
+        <span class="badge bg-indigo-lt">PostgreSQL NEW</span>
+        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Тема</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page-wrapper">
+    <div class="page-body">
+      <div class="container-xl">
+
+        
+        
+        <div class="alert alert-danger" role="alert">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <h2 class="alert-heading mb-1">НЕ ЭКВИВАЛЕНТНО</h2>
+              <div>Обнаружено расхождений: <b>12</b>, есть различия структуры. Мигрировать без разбора причин небезопасно.</div>
+            </div>
+            <div class="verdict-pct">99.85%</div>
+          </div>
+        </div>
+        
+
+        
+        <div class="row row-deck row-cards mb-3">
+          <div class="col-6 col-lg-3">
+            <div class="card"><div class="card-body">
+              <div class="subheader">Таблиц проверено</div>
+              <div class="h1 mb-0">3
+                <span class="fs-4 text-secondary">/ OK: 1</span></div>
+            </div></div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="card"><div class="card-body">
+              <div class="subheader">Строк сверено (источник)</div>
+              <div class="h1 mb-0">6 500</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="card"><div class="card-body">
+              <div class="subheader">Расхождений</div>
+              <div class="h1 mb-0 text-danger">12</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="card"><div class="card-body">
+              <div class="subheader">Совпадение</div>
+              <div class="h1 mb-0">99.85%</div>
+              <div class="progress progress-sm mt-2">
+                <div class="progress-bar bg-success" style="width: 99.8462%"></div>
+              </div>
+            </div></div>
+          </div>
+        </div>
+
+        
+        <div class="row row-deck row-cards mb-3">
+          <div class="col-lg-5">
+            <div class="card"><div class="card-body">
+              <h3 class="card-title">Итог по строкам</h3>
+              <div class="chart-box"><canvas id="donut"></canvas></div>
+            </div></div>
+          </div>
+          <div class="col-lg-7">
+            <div class="card"><div class="card-body">
+              <h3 class="card-title">Расхождения по таблицам</h3>
+              <div class="chart-box"><canvas id="bars"></canvas></div>
+            </div></div>
+          </div>
+        </div>
+
+        
+        
+        <div class="card mb-3 border-warning">
+          <div class="card-header"><h3 class="card-title">Различия структуры</h3></div>
+          <div class="card-body">
+            
+            <p class="mb-2">Таблицы только в источнике:
+              <span class="badge bg-orange-lt me-1">legacy_log</span>
+            </p>
+            
+            
+            <p class="mb-2">Таблицы только в приёмнике:
+              <span class="badge bg-yellow-lt me-1">audit_new</span>
+            </p>
+            
+            
+            <div class="mb-2">
+              <b>orders</b>:
+               колонок нет в приёмнике:
+                <code>discount</code>.
+              
+              
+              
+            </div>
+            
+          </div>
+        </div>
+        
+
+        
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h3 class="card-title mb-0"><code>customers</code>
+              <span class="text-secondary ms-2">PK: id</span>
+              
+            </h3>
+            <span class="badge bg-danger text-white">9 расхожд.</span>
+          </div>
+          <div class="card-body">
+            
+            
+            <div class="datagrid mb-2">
+              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+                <div class="datagrid-content">1 200</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+                <div class="datagrid-content">1 199</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+                <div class="datagrid-content text-success">1 193</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+                <div class="datagrid-content text-danger">4</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+                <div class="datagrid-content text-danger">3</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+                <div class="datagrid-content text-danger">2</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Время</div>
+                <div class="datagrid-content">0.009 c</div></div>
+              
+            </div>
+            <div class="progress progress-sm mb-3">
+              <div class="progress-bar bg-success" style="width: 99.4167%"></div>
+            </div>
+            
+            <p class="mb-2">Проблемные колонки:
+              
+                <span class="badge bg-red-lt me-1">name: 1</span>
+              
+                <span class="badge bg-red-lt me-1">balance: 1</span>
+              
+                <span class="badge bg-red-lt me-1">email: 1</span>
+              
+                <span class="badge bg-red-lt me-1">is_active: 1</span>
+              
+            </p>
+            
+            
+            <details>
+              <summary class="text-primary mb-2">Примеры расхождений (9)</summary>
+              <div class="table-responsive">
+                <table class="table table-sm table-vcenter">
+                  <thead><tr><th>Тип</th><th>PK</th><th>Детали (источник → приёмник)</th></tr></thead>
+                  <tbody>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>10</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">name</span>
+                              <code class="diff-src">Алексей Петрова</code> →
+                              <code class="diff-dst">Алексей Петрова (переименован)</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>20</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">balance</span>
+                              <code class="diff-src">152.6</code> →
+                              <code class="diff-dst">152.61</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>30</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">email</span>
+                              <code class="diff-src">user30@example.com</code> →
+                              <code class="diff-dst">changed30@example.com</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>40</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">is_active</span>
+                              <code class="diff-src">0</code> →
+                              <code class="diff-dst">1</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-orange-lt">нет в приёмнике</span>
+                        
+                      </td>
+                      <td><code>101</code></td>
+                      <td>
+                        —
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-orange-lt">нет в приёмнике</span>
+                        
+                      </td>
+                      <td><code>102</code></td>
+                      <td>
+                        —
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-orange-lt">нет в приёмнике</span>
+                        
+                      </td>
+                      <td><code>103</code></td>
+                      <td>
+                        —
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-yellow-lt">лишняя</span>
+                        
+                      </td>
+                      <td><code>2001</code></td>
+                      <td>
+                        —
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-yellow-lt">лишняя</span>
+                        
+                      </td>
+                      <td><code>2002</code></td>
+                      <td>
+                        —
+                      </td>
+                    </tr>
+                  
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            
+            
+          </div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h3 class="card-title mb-0"><code>orders</code>
+              <span class="text-secondary ms-2">PK: id</span>
+              
+            </h3>
+            <span class="badge bg-danger text-white">3 расхожд.</span>
+          </div>
+          <div class="card-body">
+            
+            
+            <div class="datagrid mb-2">
+              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+                <div class="datagrid-content">5 000</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+                <div class="datagrid-content">5 000</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+                <div class="datagrid-content text-success">4 997</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+                <div class="datagrid-content text-danger">3</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Время</div>
+                <div class="datagrid-content">0.027 c</div></div>
+              
+            </div>
+            <div class="progress progress-sm mb-3">
+              <div class="progress-bar bg-success" style="width: 99.94%"></div>
+            </div>
+            
+            <p class="mb-2">Проблемные колонки:
+              
+                <span class="badge bg-red-lt me-1">amount: 2</span>
+              
+                <span class="badge bg-red-lt me-1">status: 1</span>
+              
+            </p>
+            
+            
+            <details>
+              <summary class="text-primary mb-2">Примеры расхождений (3)</summary>
+              <div class="table-responsive">
+                <table class="table table-sm table-vcenter">
+                  <thead><tr><th>Тип</th><th>PK</th><th>Детали (источник → приёмник)</th></tr></thead>
+                  <tbody>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>500</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">amount</span>
+                              <code class="diff-src">1890.0</code> →
+                              <code class="diff-dst">1890.02</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>1500</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">amount</span>
+                              <code class="diff-src">665.0</code> →
+                              <code class="diff-dst">665.02</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                    <tr>
+                      <td>
+                        <span class="badge bg-red-lt">значения</span>
+                        
+                      </td>
+                      <td><code>2500</code></td>
+                      <td>
+                        
+                          
+                            <div><span class="badge bg-azure-lt">status</span>
+                              <code class="diff-src">paid</code> →
+                              <code class="diff-dst">refunded</code></div>
+                          
+                        
+                      </td>
+                    </tr>
+                  
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            
+            
+          </div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h3 class="card-title mb-0"><code>products</code>
+              <span class="text-secondary ms-2">PK: id</span>
+              
+            </h3>
+            <span class="badge bg-success text-white">OK</span>
+            
+          </div>
+          <div class="card-body">
+            
+            
+            <div class="datagrid mb-2">
+              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+                <div class="datagrid-content">300</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+                <div class="datagrid-content">300</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+                <div class="datagrid-content text-success">300</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+                <div class="datagrid-content ">0</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Время</div>
+                <div class="datagrid-content">0.001 c</div></div>
+              
+            </div>
+            <div class="progress progress-sm mb-3">
+              <div class="progress-bar bg-success" style="width: 100.0%"></div>
+            </div>
+            
+            
+            
+          </div>
+        </div>
+        
+
+        <footer class="footer footer-transparent d-print-none py-3">
+          <div class="text-secondary">
+            Сгенерировано DBParity v0.3.0 · 2026-07-02 16:27 UTC ·
+            длительность прогона 0.04 с ·
+            правила: rtrim=True,
+            ε=1e-09,
+            маскирование=False
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CHART = {"diffs": [9, 3, 0], "donut": {"data": [6490, 7, 3, 2, 0], "labels": ["\u0421\u043e\u0432\u043f\u0430\u043b\u043e", "\u0420\u0430\u0437\u043b\u0438\u0447\u0438\u044f \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0439", "\u041d\u0435\u0442 \u0432 \u043f\u0440\u0438\u0451\u043c\u043d\u0438\u043a\u0435", "\u041b\u0438\u0448\u043d\u0438\u0435 \u0432 \u043f\u0440\u0438\u0451\u043c\u043d\u0438\u043a\u0435", "\u0414\u0443\u0431\u043b\u0438 PK"]}, "tables": ["customers", "orders", "products"]};
+const PALETTE = ["#2fb344", "#d63939", "#f76707", "#f59f00", "#ae3ec9"];
+
+function toggleTheme() {
+  const el = document.documentElement;
+  el.setAttribute("data-bs-theme",
+    el.getAttribute("data-bs-theme") === "dark" ? "light" : "dark");
+}
+
+new Chart(document.getElementById("donut"), {
+  type: "doughnut",
+  data: {
+    labels: CHART.donut.labels,
+    datasets: [{ data: CHART.donut.data, backgroundColor: PALETTE }]
+  },
+  options: {
+    maintainAspectRatio: false,
+    plugins: { legend: { position: "right" } }
+  }
+});
+
+new Chart(document.getElementById("bars"), {
+  type: "bar",
+  data: {
+    labels: CHART.tables,
+    datasets: [{ label: "Расхождения", data: CHART.diffs, backgroundColor: "#d63939" }]
+  },
+  options: {
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    plugins: { legend: { display: false } }
+  }
+});
+</script>
+</body>
+</html>
