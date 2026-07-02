@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru" data-bs-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>DBParity — верификатор миграций БД</title>
+  <meta name="description" content="Prove your database migration didn't lose or corrupt a single row."/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"/>
+  <style>
+    .hero { padding: 6rem 0 3rem; text-align: center; }
+    .hero .display-5 { font-weight: 700; }
+    .cards { max-width: 900px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="page-wrapper">
+    <div class="page-body">
+      <div class="container-xl">
+
+        <div class="hero">
+          <h1 class="display-5 mb-2">
+            <span class="badge bg-blue text-white me-2">DB</span>Parity
+          </h1>
+          <p class="text-secondary fs-3 mb-1">
+            Докажите, что при миграции БД не потерялась и не исказилась ни одна строка
+          </p>
+          <p class="text-secondary mb-4">
+            Prove your database migration didn't lose or corrupt a single row
+          </p>
+          <div class="d-flex justify-content-center gap-2 flex-wrap">
+            <a class="btn btn-primary btn-lg" href="demo_report.html">
+              📊 Живой демо-отчёт
+            </a>
+            <a class="btn btn-outline-secondary btn-lg"
+               href="https://github.com/Nik-WEBJS/DBParity">
+              GitHub
+            </a>
+          </div>
+        </div>
+
+        <div class="row row-cards cards mb-4">
+          <div class="col-md-4">
+            <a class="card card-link" href="demo_report.html">
+              <div class="card-body">
+                <h3 class="card-title">Демо-отчёт</h3>
+                <p class="text-secondary mb-0">
+                  Что интегратор кладёт заказчику на стол: вердикт, графики,
+                  примеры расхождений. Oracle→PostgreSQL, 12 подложенных ошибок.
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-md-4">
+            <a class="card card-link"
+               href="https://github.com/Nik-WEBJS/DBParity/blob/main/docs/config-reference.md">
+              <div class="card-body">
+                <h3 class="card-title">Справочник конфига</h3>
+                <p class="text-secondary mb-0">
+                  Все ключи config.yaml: эндпоинты, правила нормализации,
+                  hash-режим, инкременты, чекпоинты, ретраи.
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-md-4">
+            <a class="card card-link"
+               href="https://github.com/Nik-WEBJS/DBParity/blob/main/docs/report-format.md">
+              <div class="card-body">
+                <h3 class="card-title">Формат JSON-отчёта</h3>
+                <p class="text-secondary mb-0">
+                  Замороженная схема v1 с semver-гарантиями — стройте свою
+                  автоматизацию поверх отчётов без страха поломок.
+                </p>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <footer class="text-center text-secondary py-4">
+          MIT © 2026 Nikita Fokin ·
+          <a href="https://github.com/Nik-WEBJS/DBParity">Nik-WEBJS/DBParity</a>
+        </footer>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
