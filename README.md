@@ -102,6 +102,7 @@ pip install -e ".[postgres]"          # + [oracle] / [mssql] as needed
 dbparity demo --outdir demo_out       # built-in demo with planted diffs
 open demo_out/dbparity_report.html    # see what your client will see
 
+dbparity validate -c config.yaml      # sanity-check config (no DB needed)
 dbparity compare -c config.yaml       # the real thing
 ```
 

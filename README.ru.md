@@ -103,6 +103,7 @@ pip install -e ".[postgres]"          # + [oracle] / [mssql] по необход
 dbparity demo --outdir demo_out       # демо со специально внесёнными расхождениями
 open demo_out/dbparity_report.html    # то, что увидит ваш заказчик
 
+dbparity validate -c config.yaml      # проверка конфига (без подключения к БД)
 dbparity compare -c config.yaml       # боевая сверка
 ```
 

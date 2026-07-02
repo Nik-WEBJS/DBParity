@@ -23,16 +23,17 @@
   watermark по PK, партиал-слот на таблицу), `--resume` в CLI
 - [x] Retry на сетевые ошибки: `retry_attempts`/`retry_backoff_s`,
   свежая пара соединений на попытку, продолжение с последнего watermark
-- [ ] Бенчмарк-матрица в CI (регрессия производительности)
+- [x] Бенчмарк-матрица в CI: `bench --json` + workflow с порогами регрессии
+  и публикацией метрик в summary
 
 ## v0.4 — Oracle/MSSQL hardening
 
 - [ ] Обкатка на реальных Oracle-инстансах (issues от сообщества)
 - [ ] Кодировки: AL32UTF8 vs UTF-8 edge cases, NCHAR/NVARCHAR2
 - [ ] MSSQL: полноценный адаптер + docker-тест в CI (mcr mssql-server)
-- [ ] Бинарная сортировка для текстовых PK: `COLLATE "C"` (PG) /
-  `NLSSORT BINARY` (Oracle) / явные коллации (MSSQL) — убрать предупреждение,
-  заменив его гарантией
+- [x] Бинарная сортировка для текстовых PK: `COLLATE "C"` (PG) /
+  `NLSSORT BINARY` (Oracle) / `COLLATE BINARY` (sqlite) /
+  `Latin1_General_BIN2` (MSSQL) — предупреждение заменено гарантией
 
 ## v0.5 — Parallel-run mode
 
@@ -42,7 +43,8 @@
 ## v0.9 — Release candidate
 
 - [ ] Стабилизация формата config.yaml и JSON-отчёта (semver-гарантии)
-- [ ] JSON Schema конфига + `dbparity validate`
+- [x] `dbparity validate` — проверка конфига без подключения к БД,
+  агрегированные ошибки с подсказками опечаток (сделано досрочно)
 - [ ] Документация: сайт (mkdocs), рецепты для типовых миграций
   (Oracle→PG, MSSQL→PG, включая СНГ-специфику Postgres Pro)
 
