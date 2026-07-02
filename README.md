@@ -72,6 +72,7 @@ rules:
   rtrim_strings: true
   float_epsilon: 1.0e-9
 mask_values: false                   # true → hide values in the report
+workers: 4                           # compare N tables in parallel
 report:
   html: report.html
   json: report.json

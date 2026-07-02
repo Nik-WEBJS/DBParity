@@ -1,0 +1,22 @@
+name: Release to PyPI
+
+# Публикация по тегу vX.Y.Z. Требуется одноразовая настройка
+# Trusted Publisher на pypi.org (см. ROADMAP.md, раздел «Как релизить»).
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
