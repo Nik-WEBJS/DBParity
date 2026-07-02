@@ -142,7 +142,10 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
     )
     run = engine.run(cfg)
     t = run.tables[0]
-    assert t.mode == "hash"
+    # самодиагностика: при падении T-SQL или неэлигибельности причина
+    # лежит в error/warnings — выводим её в сообщении assert
+    assert t.error is None, f"таблица упала: {t.error}"
+    assert t.mode == "hash", f"mode={t.mode}; warnings={t.warnings}"
     assert t.mismatched == 2
     assert t.missing_in_target == 0 and t.extra_in_target == 0
     assert t.matched == n - 2
