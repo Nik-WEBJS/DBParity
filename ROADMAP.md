@@ -30,19 +30,25 @@
 
 - [ ] Обкатка на реальных Oracle-инстансах (issues от сообщества)
 - [ ] Кодировки: AL32UTF8 vs UTF-8 edge cases, NCHAR/NVARCHAR2
-- [ ] MSSQL: полноценный адаптер + docker-тест в CI (mcr mssql-server)
+- [x] MSSQL: полноценный адаптер (ODBC 18, datetimeoffset-конвертер,
+  digest-API с T-SQL канонизацией) + live-джоба в CI (mcr mssql-server:2022)
 - [x] Бинарная сортировка для текстовых PK: `COLLATE "C"` (PG) /
   `NLSSORT BINARY` (Oracle) / `COLLATE BINARY` (sqlite) /
   `Latin1_General_BIN2` (MSSQL) — предупреждение заменено гарантией
 
 ## v0.5 — Parallel-run mode
 
-- [ ] Непрерывная сверка во время dual-write перед переключением трафика:
-  окно по watermark-колонке, инкрементальные прогоны, отчёт-таймлайн
+- [x] Инкрементальные прогоны по watermark-колонке (`incremental:` в конфиге,
+  `--full` для сброса): сверяются только изменённые строки, missing/extra
+  среди них = дрейф dual-write; стейт с fingerprint конфига
+- [ ] Отчёт-таймлайн серии инкрементальных прогонов; режим наблюдения
+  (запуск по расписанию до достижения нуля дрейфа)
 
 ## v0.9 — Release candidate
 
-- [ ] Стабилизация формата config.yaml и JSON-отчёта (semver-гарантии)
+- [x] Стабилизация формата JSON-отчёта: schema_version=1, правила эволюции,
+  справочники docs/report-format.md и docs/config-reference.md,
+  золотой тест формата
 - [x] `dbparity validate` — проверка конфига без подключения к БД,
   агрегированные ошибки с подсказками опечаток (сделано досрочно)
 - [ ] Документация: сайт (mkdocs), рецепты для типовых миграций
