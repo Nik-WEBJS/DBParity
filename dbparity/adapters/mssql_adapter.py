@@ -28,6 +28,7 @@ def _logical(data_type: str) -> str:
 
 class MSSQLAdapter(Adapter):
     dialect = "mssql"
+    binary_collation_supported = True   # ORDER BY ... COLLATE Latin1_General_BIN2
 
     def __init__(self, endpoint):
         if pyodbc is None:  # pragma: no cover
@@ -76,7 +77,7 @@ class MSSQLAdapter(Adapter):
     def stream_rows(
         self, table: str, columns: Sequence[str],
         order_by: Sequence[str], batch: int,
-        pk_range=None,
+        pk_range=None, order_logicals: Sequence[str] | None = None,
     ) -> Iterator[tuple]:  # pragma: no cover
         def q(name: str) -> str:
             return "[" + name.replace("]", "]]") + "]"
@@ -90,11 +91,16 @@ class MSSQLAdapter(Adapter):
             else:
                 where = f" WHERE {q(col)} >= ? AND {q(col)} <= ?"
                 params = (lo, hi)
+        # текстовые order_by-колонки — бинарная коллация вместо коллации БД
+        logs = order_logicals or [None] * len(order_by)
+        order_sql = ", ".join(
+            f"{q(c)} COLLATE Latin1_General_BIN2" if lg == "text" else q(c)
+            for c, lg in zip(order_by, logs))
         cur = self.conn.cursor()
         cur.execute(
             f'SELECT {", ".join(q(c) for c in columns)} '
             f'FROM {q(self.schema)}.{q(table)}{where} '
-            f'ORDER BY {", ".join(q(c) for c in order_by)}',
+            f'ORDER BY {order_sql}',
             *params,
         )
         while True:

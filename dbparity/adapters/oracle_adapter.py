@@ -28,6 +28,7 @@ def _logical(data_type: str) -> str:
 
 class OracleAdapter(Adapter):
     dialect = "oracle"
+    binary_collation_supported = True   # ORDER BY NLSSORT(..., BINARY)
 
     def __init__(self, endpoint):
         if oracledb is None:  # pragma: no cover
@@ -80,7 +81,7 @@ class OracleAdapter(Adapter):
     def stream_rows(
         self, table: str, columns: Sequence[str],
         order_by: Sequence[str], batch: int,
-        pk_range=None,
+        pk_range=None, order_logicals: Sequence[str] | None = None,
     ) -> Iterator[tuple]:  # pragma: no cover
         def q(name: str) -> str:
             return '"' + name.replace('"', '""') + '"'
@@ -94,12 +95,18 @@ class OracleAdapter(Adapter):
             else:
                 where = f" WHERE {q(col)} >= :lo AND {q(col)} <= :hi"
                 params = {"lo": lo, "hi": hi}
+        # текстовые order_by-колонки — бинарная сортировка, независимая
+        # от NLS_SORT сессии (согласуется с COLLATE "C"/BINARY других БД)
+        logs = order_logicals or [None] * len(order_by)
+        order_sql = ", ".join(
+            f"NLSSORT({q(c)}, 'NLS_SORT=BINARY')" if lg == "text" else q(c)
+            for c, lg in zip(order_by, logs))
         cur = self.conn.cursor()
         cur.arraysize = batch
         cur.execute(
             f'SELECT {", ".join(q(c) for c in columns)} '
             f'FROM {q(self.owner)}.{q(table.upper())}{where} '
-            f'ORDER BY {", ".join(q(c) for c in order_by)}',
+            f'ORDER BY {order_sql}',
             params,
         )
         for row in cur:

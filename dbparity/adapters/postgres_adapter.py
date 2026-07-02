@@ -32,6 +32,7 @@ def _logical(data_type: str) -> str:
 
 class PostgresAdapter(Adapter):
     dialect = "postgres"
+    binary_collation_supported = True   # ORDER BY ... COLLATE "C"
 
     def __init__(self, endpoint):
         if psycopg is None:  # pragma: no cover
@@ -88,11 +89,17 @@ class PostgresAdapter(Adapter):
             pk = [r[0] for r in cur.fetchall()]
         return TableSchema(name=table, columns=cols, pk=pk)
 
-    def stream_rows(
-        self, table: str, columns: Sequence[str],
-        order_by: Sequence[str], batch: int,
-        pk_range=None,
-    ) -> Iterator[tuple]:  # pragma: no cover
+    @staticmethod
+    def _build_stream_query(schema: str, table: str, columns: Sequence[str],
+                            order_by: Sequence[str], pk_range=None,
+                            order_logicals: Sequence[str] | None = None):
+        """(запрос psycopg.sql, params) для stream_rows.
+
+        Вынесено в статический метод: строится без соединения и потому
+        тестируется юнитами. Текстовые order_by-колонки сортируются в
+        COLLATE "C" (бинарно); для нетекстовых COLLATE не добавляется —
+        на них он вызвал бы ошибку PostgreSQL.
+        """
         where = _sql.SQL("")
         params = ()
         if pk_range is not None:
@@ -104,12 +111,27 @@ class PostgresAdapter(Adapter):
                 where = _sql.SQL(" WHERE {c} >= %s AND {c} <= %s").format(
                     c=_sql.Identifier(col))
                 params = (lo, hi)
+        logs = order_logicals or [None] * len(order_by)
+        order_terms = [
+            _sql.SQL('{c} COLLATE "C"').format(c=_sql.Identifier(c))
+            if lg == "text" else _sql.Identifier(c)
+            for c, lg in zip(order_by, logs)
+        ]
         q = _sql.SQL("SELECT {cols} FROM {tbl}{where} ORDER BY {order}").format(
             cols=_sql.SQL(", ").join(_sql.Identifier(c) for c in columns),
-            tbl=_sql.Identifier(self.schema, table),
+            tbl=_sql.Identifier(schema, table),
             where=where,
-            order=_sql.SQL(", ").join(_sql.Identifier(c) for c in order_by),
+            order=_sql.SQL(", ").join(order_terms),
         )
+        return q, params
+
+    def stream_rows(
+        self, table: str, columns: Sequence[str],
+        order_by: Sequence[str], batch: int,
+        pk_range=None, order_logicals: Sequence[str] | None = None,
+    ) -> Iterator[tuple]:  # pragma: no cover
+        q, params = self._build_stream_query(
+            self.schema, table, columns, order_by, pk_range, order_logicals)
         if self.server_side:
             with self.conn.cursor(name=f"dbparity_{abs(hash((table, pk_range)))}") as cur:
                 cur.itersize = batch

@@ -37,6 +37,14 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
     else:
         src_log = {c.name.lower(): c.logical for c in ss.columns}
         dst_log = {c.name.lower(): c.logical for c in ds.columns}
+        # Текстовые PK: порядок merge зависит от коллаций движков (Oracle
+        # BINARY vs PG locale). Если оба адаптера умеют бинарную сортировку —
+        # навязываем её обеим сторонам через order_logicals.
+        pk_text = [p for p in pk
+                   if src_log.get(p) == "text" or dst_log.get(p) == "text"]
+        binary_sort = bool(pk_text) \
+            and getattr(src, "binary_collation_supported", False) \
+            and getattr(dst, "binary_collation_supported", False)
         progress = (lambda n: on_progress(t, n)) if on_progress else None
         eligible, why = digest_eligible(
             config, src, dst, pk, common_cols, src_log, dst_log)
@@ -62,14 +70,21 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
             if checkpoint_cb is not None and len(pk) == 1:
                 ckpt_kw = {"checkpoint": checkpoint_cb,
                            "checkpoint_every": config.checkpoint_every_rows}
+            # order_logicals передаём только при текстовом PK: для числовых
+            # PK он ничего не меняет, а обёртки stream_rows со старой
+            # сигнатурой (тесты, сторонние адаптеры) остаются совместимыми
+            src_bin = ({"order_logicals": [src_log[p] for p in pk]}
+                       if binary_sort else {})
+            dst_bin = ({"order_logicals": [dst_log[p] for p in pk]}
+                       if binary_sort else {})
             src_stream = src.stream_rows(
                 src_name, [src_names[c] for c in common_cols],
                 [src_names[p] for p in pk], config.batch_size,
-                pk_range=src_range)
+                pk_range=src_range, **src_bin)
             dst_stream = dst.stream_rows(
                 dst_name, [dst_names[c] for c in common_cols],
                 [dst_names[p] for p in pk], config.batch_size,
-                pk_range=dst_range)
+                pk_range=dst_range, **dst_bin)
             tr = compare_table(
                 t, common_cols, pk, src_stream, dst_stream,
                 norm_src, norm_dst,
@@ -84,9 +99,12 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
         if config.strategy == "hash" and not eligible:
             tr.warnings.append(
                 f"hash-режим недоступен ({why}) — использована потоковая сверка")
-        pk_text = [p for p in pk
-                   if src_log.get(p) == "text" or dst_log.get(p) == "text"]
-        if pk_text:
+        if pk_text and binary_sort:
+            tr.warnings.append(
+                f"PK содержит текстовые колонки ({', '.join(pk_text)}): "
+                "применена бинарная сортировка на обеих сторонах — "
+                "порядок merge не зависит от коллаций движков")
+        elif pk_text:
             tr.warnings.append(
                 f"PK содержит текстовые колонки ({', '.join(pk_text)}): "
                 "порядок сортировки может различаться между движками "

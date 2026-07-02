@@ -25,6 +25,12 @@ class Adapter(abc.ABC):
 
     dialect = "generic"
 
+    # Умеет ли адаптер сортировать текстовые ORDER BY-колонки в бинарной
+    # коллации (см. order_logicals в stream_rows). Все встроенные адаптеры
+    # умеют; сторонний адаптер без поддержки обязан выставить False —
+    # тогда движок оставит предупреждение о коллациях вместо гарантии.
+    binary_collation_supported = True
+
     def __init__(self, endpoint):
         self.endpoint = endpoint
 
@@ -42,12 +48,19 @@ class Adapter(abc.ABC):
     def stream_rows(
         self, table: str, columns: Sequence[str],
         order_by: Sequence[str], batch: int,
-        pk_range=None,
+        pk_range=None, order_logicals: Sequence[str] | None = None,
     ) -> Iterator[tuple]:
         """Строки в порядке ORDER BY <order_by>, чанками по batch.
 
         pk_range=(col, lo, hi) — необязательный фильтр lo <= col <= hi
         (используется hash-режимом для детализации сегментов).
+
+        order_logicals — необязательный список логических типов колонок
+        order_by (параллельный список). Если задан, ТЕКСТОВЫЕ колонки
+        сортируются в бинарной коллации движка (COLLATE BINARY / "C" /
+        NLSSORT BINARY / Latin1_General_BIN2) — так порядок merge-сравнения
+        совпадает между движками независимо от их коллаций по умолчанию.
+        None — прежнее поведение (сортировка по умолчанию движка).
         """
         ...
 

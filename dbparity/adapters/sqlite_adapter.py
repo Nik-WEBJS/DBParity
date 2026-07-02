@@ -57,6 +57,7 @@ def _hex2int(s):
 
 class SQLiteAdapter(Adapter):
     supports_digest = True
+    binary_collation_supported = True   # ORDER BY ... COLLATE BINARY
 
     def __init__(self, endpoint):
         super().__init__(endpoint)
@@ -94,17 +95,23 @@ class SQLiteAdapter(Adapter):
         return TableSchema(name=table, columns=cols,
                            pk=[n for _, n in sorted(pk)])
 
-    def stream_rows(
-        self, table: str, columns: Sequence[str],
-        order_by: Sequence[str], batch: int,
-        pk_range=None,
-    ) -> Iterator[tuple]:
-        schema = self.table_schema(table)
-        logical = {c.name: c.logical for c in schema.columns}
-        temporal_idx = [i for i, c in enumerate(columns)
-                        if logical.get(c) in ("datetime", "date")]
+    def _order_term(self, col: str, logical: str | None = None) -> str:
+        """Элемент ORDER BY: текстовые колонки — явно в бинарной коллации.
+
+        Дефолтная коллация sqlite и так BINARY, но пишем явно — это
+        контрактная гарантия, а не совпадение настроек.
+        """
+        q = self._quote(col)
+        return f"{q} COLLATE BINARY" if logical == "text" else q
+
+    def _stream_sql(self, table: str, columns: Sequence[str],
+                    order_by: Sequence[str], pk_range=None,
+                    order_logicals: Sequence[str] | None = None):
+        """(sql, params) для stream_rows — вынесено для юнит-тестов."""
         cols_sql = ", ".join(self._quote(c) for c in columns)
-        order_sql = ", ".join(self._quote(c) for c in order_by)
+        logs = order_logicals or [None] * len(order_by)
+        order_sql = ", ".join(
+            self._order_term(c, lg) for c, lg in zip(order_by, logs))
         where, params = "", ()
         if pk_range is not None:
             col, lo, hi = pk_range
@@ -115,9 +122,23 @@ class SQLiteAdapter(Adapter):
                 where = (f" WHERE {self._quote(col)} >= ? "
                          f"AND {self._quote(col)} <= ?")
                 params = (lo, hi)
+        sql = (f"SELECT {cols_sql} FROM {self._quote(table)}{where} "
+               f"ORDER BY {order_sql}")
+        return sql, params
+
+    def stream_rows(
+        self, table: str, columns: Sequence[str],
+        order_by: Sequence[str], batch: int,
+        pk_range=None, order_logicals: Sequence[str] | None = None,
+    ) -> Iterator[tuple]:
+        schema = self.table_schema(table)
+        logical = {c.name: c.logical for c in schema.columns}
+        temporal_idx = [i for i, c in enumerate(columns)
+                        if logical.get(c) in ("datetime", "date")]
+        sql, params = self._stream_sql(table, columns, order_by,
+                                       pk_range, order_logicals)
         cur = self.conn.cursor()
-        cur.execute(f"SELECT {cols_sql} FROM {self._quote(table)}{where} "
-                    f"ORDER BY {order_sql}", params)
+        cur.execute(sql, params)
         while True:
             rows = cur.fetchmany(batch)
             if not rows:
