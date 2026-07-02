@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -96,12 +97,228 @@ def _strategy(value) -> str:
     return v
 
 
-def config_from_dict(data: dict) -> Config:
+# ---------------------------------------------------------------------------
+# Валидация «сырого» словаря конфига (до построения Config, без подключения
+# к БД). Используется командой `dbparity validate` и самим config_from_dict.
+# ---------------------------------------------------------------------------
+
+_ENDPOINT_TYPES = ("sqlite", "postgres", "postgresql", "oracle", "mssql")
+
+# Все известные ключи верхнего уровня (по полям Config)
+_TOP_LEVEL_KEYS = {
+    "source", "target", "tables", "pk_overrides", "exclude_columns", "rules",
+    "sample_limit", "batch_size", "mask_values", "workers", "strategy",
+    "hash_leaf_rows", "checkpoint", "checkpoint_every_rows",
+    "retry_attempts", "retry_backoff_s", "report",
+}
+
+# Минимумы целочисленных параметров (согласованы с config_from_dict)
+_INT_MINIMUMS = {
+    "workers": 1,
+    "sample_limit": 0,
+    "batch_size": 1,
+    "hash_leaf_rows": 1,
+    "checkpoint_every_rows": 1000,
+    "retry_attempts": 1,
+}
+
+
+def _is_int(value) -> bool:
+    """Целое число (bool в Python — тоже int, поэтому исключаем явно)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value) -> bool:
+    """Число (int или float), но не bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _validate_endpoint(section: str, data, problems: list[str]) -> None:
+    """Проверка секции source/target: type и обязательные параметры по типу."""
     if not isinstance(data, dict):
-        raise ValueError("Конфиг пуст или имеет неверный формат")
-    for key in ("source", "target"):
-        if key not in data:
-            raise ValueError(f"В конфиге отсутствует обязательная секция '{key}'")
+        problems.append(f"{section}: секция должна быть словарём "
+                        f"с полем type и параметрами подключения")
+        return
+    raw_type = data.get("type")
+    if raw_type is None:
+        problems.append(f"{section}.type: обязательное поле "
+                        f"({' | '.join(_ENDPOINT_TYPES)})")
+        return
+    etype = str(raw_type).lower()
+    if etype not in _ENDPOINT_TYPES:
+        problems.append(f"{section}.type: неизвестный тип {raw_type!r} "
+                        f"(допустимые: {', '.join(_ENDPOINT_TYPES)})")
+        return
+    if etype == "sqlite":
+        if not data.get("path"):
+            problems.append(f"{section}.path: обязателен для type=sqlite")
+    elif etype in ("postgres", "postgresql"):
+        if not data.get("dsn"):
+            missing = [k for k in ("host", "dbname", "user")
+                       if not data.get(k)
+                       and not (k == "dbname" and data.get("database"))]
+            if missing:
+                problems.append(
+                    f"{section}: для type={etype} укажите dsn либо "
+                    f"host+dbname+user (не хватает: {', '.join(missing)})")
+    elif etype == "oracle":
+        for key in ("user", "password", "dsn"):
+            if not data.get(key):
+                problems.append(f"{section}.{key}: обязателен для type=oracle")
+    elif etype == "mssql":
+        if not data.get("dsn"):
+            problems.append(f"{section}.dsn: обязателен для type=mssql")
+
+
+def _validate_rules_dict(data, problems: list[str]) -> None:
+    """Проверка секции rules: известные ключи и типы значений."""
+    if data is None:
+        return
+    if not isinstance(data, dict):
+        problems.append("rules: ожидается словарь правил нормализации")
+        return
+    defaults = NormalizeRules()
+    allowed = sorted(f.name for f in dataclasses.fields(NormalizeRules))
+    for key, value in data.items():
+        if key not in allowed:
+            hint = difflib.get_close_matches(str(key), allowed, n=1)
+            msg = f"rules.{key}: неизвестное правило (опечатка?)"
+            if hint:
+                msg += f" — возможно, имелось в виду '{hint[0]}'"
+            else:
+                msg += f"; допустимые: {', '.join(allowed)}"
+            problems.append(msg)
+            continue
+        expected = getattr(defaults, key)
+        if isinstance(expected, bool):
+            if not isinstance(value, bool):
+                problems.append(f"rules.{key}: ожидается true/false, "
+                                f"получено {value!r}")
+        elif key == "timestamp_precision":
+            if not _is_int(value) or not 0 <= value <= 6:
+                problems.append(f"rules.{key}: ожидается целое число 0..6, "
+                                f"получено {value!r}")
+        elif key == "float_epsilon":
+            if not _is_number(value) or value < 0:
+                problems.append(f"rules.{key}: ожидается число ≥ 0, "
+                                f"получено {value!r}")
+
+
+def validate_config_dict(data: dict) -> list[str]:
+    """Проверяет словарь конфига ДО построения Config и без подключения к БД.
+
+    Возвращает список человекочитаемых проблем на русском языке
+    (пустой список — конфиг валиден). Каждая строка содержит путь к полю,
+    например: "source.path: обязателен для type=sqlite".
+    """
+    if not isinstance(data, dict):
+        return ["Конфиг пуст или имеет неверный формат (ожидается YAML-словарь)"]
+
+    problems: list[str] = []
+
+    # --- обязательные секции source/target --------------------------------
+    for section in ("source", "target"):
+        if section not in data:
+            problems.append(f"{section}: отсутствует обязательная секция "
+                            f"(описание подключения)")
+        else:
+            _validate_endpoint(section, data[section], problems)
+
+    # --- правила нормализации ----------------------------------------------
+    _validate_rules_dict(data.get("rules"), problems)
+
+    # --- стратегия -----------------------------------------------------------
+    if "strategy" in data:
+        v = data["strategy"]
+        if not isinstance(v, str) or v.lower() not in ("auto", "stream", "hash"):
+            problems.append(f"strategy: ожидается auto | stream | hash, "
+                            f"получено {v!r}")
+
+    # --- целочисленные параметры и их минимумы -------------------------------
+    for key, minimum in _INT_MINIMUMS.items():
+        if key in data:
+            v = data[key]
+            if not _is_int(v):
+                problems.append(f"{key}: ожидается целое число ≥ {minimum}, "
+                                f"получено {v!r}")
+            elif v < minimum:
+                problems.append(f"{key}: минимально допустимое значение "
+                                f"{minimum}, получено {v}")
+
+    if "retry_backoff_s" in data:
+        v = data["retry_backoff_s"]
+        if not _is_number(v) or v < 0:
+            problems.append(f"retry_backoff_s: ожидается число ≥ 0, "
+                            f"получено {v!r}")
+
+    if "mask_values" in data and data["mask_values"] is not None \
+            and not isinstance(data["mask_values"], bool):
+        problems.append(f"mask_values: ожидается true/false, "
+                        f"получено {data['mask_values']!r}")
+
+    # --- список таблиц --------------------------------------------------------
+    if data.get("tables") is not None:
+        tables = data["tables"]
+        if not isinstance(tables, list):
+            problems.append("tables: ожидается список имён таблиц (строк)")
+        else:
+            for i, item in enumerate(tables):
+                if not isinstance(item, str):
+                    problems.append(f"tables[{i}]: ожидается строка, "
+                                    f"получено {item!r}")
+
+    # --- переопределения PK и исключённые колонки ------------------------------
+    for key in ("pk_overrides", "exclude_columns"):
+        if data.get(key) is None:
+            continue
+        mapping = data[key]
+        if not isinstance(mapping, dict):
+            problems.append(f"{key}: ожидается словарь "
+                            f"{{таблица: [список колонок]}}")
+            continue
+        for table, cols in mapping.items():
+            if not isinstance(cols, list) \
+                    or not all(isinstance(c, str) for c in cols):
+                problems.append(f"{key}.{table}: ожидается список "
+                                f"имён колонок (строк)")
+
+    # --- отчёты и чекпоинт -----------------------------------------------------
+    report = data.get("report")
+    if report is not None:
+        if not isinstance(report, dict):
+            problems.append("report: ожидается словарь "
+                            "с ключами html и/или json")
+        else:
+            for key in ("html", "json"):
+                if report.get(key) is not None \
+                        and not isinstance(report[key], str):
+                    problems.append(f"report.{key}: ожидается строка "
+                                    f"(путь к файлу)")
+
+    if data.get("checkpoint") is not None \
+            and not isinstance(data["checkpoint"], str):
+        problems.append("checkpoint: ожидается строка (путь к файлу)")
+
+    # --- незнакомые ключи верхнего уровня (с подсказкой) -------------------------
+    for key in data:
+        if key not in _TOP_LEVEL_KEYS:
+            hint = difflib.get_close_matches(str(key),
+                                             sorted(_TOP_LEVEL_KEYS), n=1)
+            msg = f"{key}: неизвестный ключ (опечатка?)"
+            if hint:
+                msg += f" — возможно, имелся в виду '{hint[0]}'"
+            problems.append(msg)
+
+    return problems
+
+
+def config_from_dict(data: dict) -> Config:
+    problems = validate_config_dict(data)
+    if problems:
+        raise ValueError(
+            f"Конфиг не прошёл проверку (проблем: {len(problems)}):\n"
+            + "\n".join(f"  - {p}" for p in problems)
+        )
     report = data.get("report") or {}
     return Config(
         source=_endpoint(data["source"], "source"),

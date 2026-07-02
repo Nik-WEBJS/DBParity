@@ -1,17 +1,18 @@
-"""CLI: dbparity compare | demo."""
+"""CLI: dbparity compare | demo | validate."""
 from __future__ import annotations
 
 import argparse
 import threading
 from pathlib import Path
 
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table as RichTable
 
 from . import __version__
-from .config import load_config
+from .config import config_from_dict, load_config, validate_config_dict
 from .core import engine
 from .report.render import write_html, write_json
 
@@ -68,6 +69,48 @@ def _print_summary(console: Console, run) -> None:
             border_style="red"))
 
 
+def _cmd_validate(console: Console, path: str) -> int:
+    """Команда validate: проверка конфига без подключения к БД.
+
+    Коды выхода: 0 — конфиг валиден, 1 — найдены проблемы,
+    2 — файл не найден или не разбирается как YAML.
+    """
+    p = Path(path)
+    if not p.exists():
+        console.print(f"[bold red]Ошибка:[/bold red] конфиг не найден: {p}")
+        return 2
+    try:
+        with open(p, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        console.print("[bold red]Ошибка:[/bold red] не удалось разобрать YAML")
+        console.print(str(e), style="red", markup=False)
+        return 2
+
+    problems = validate_config_dict(data)
+    if problems:
+        console.print(f"[bold red]Конфиг невалиден[/bold red] — "
+                      f"проблем: {len(problems)}")
+        for msg in problems:
+            console.print(f"  ✗ {msg}", style="red", markup=False)
+        return 1
+
+    cfg = config_from_dict(data)
+    console.print("[bold green]Конфиг валиден[/bold green]")
+    src = cfg.source.label or cfg.source.type
+    dst = cfg.target.label or cfg.target.type
+    console.print(f"  Сверка: {src} → {dst}", markup=False)
+    console.print(f"  Таблицы: "
+                  f"{', '.join(cfg.tables) if cfg.tables else 'все общие'}",
+                  markup=False)
+    console.print(f"  Стратегия: {cfg.strategy}, workers: {cfg.workers}",
+                  markup=False)
+    reports = ", ".join(x for x in (cfg.report.html, cfg.report.json) if x)
+    if reports:
+        console.print(f"  Отчёты: {reports}", markup=False)
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="dbparity",
@@ -88,8 +131,15 @@ def main(argv=None) -> int:
     pd.add_argument("--outdir", default="demo_out", help="каталог для демо-файлов")
     pd.add_argument("--workers", type=int, help="параллельные таблицы")
 
+    pv = sub.add_parser("validate",
+                        help="Проверка конфига без подключения к БД")
+    pv.add_argument("-c", "--config", required=True, help="путь к config.yaml")
+
     args = parser.parse_args(argv)
     console = Console()
+
+    if args.cmd == "validate":
+        return _cmd_validate(console, args.config)
 
     try:
         if args.cmd == "demo":
