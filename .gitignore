@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.venv/
+venv/
+
+# артефакты демо и бенчмарков
+demo_out/
+*.db
+*.db-journal
+
+.DS_Store

@@ -1,0 +1,12 @@
+# Локальный PostgreSQL для интеграционных тестов:
+#   docker compose up -d
+#   DBPARITY_PG_DSN="host=127.0.0.1 port=5432 dbname=dbparity user=postgres password=dbparity" \
+#     python3 -m pytest tests/test_postgres_integration.py -v
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: dbparity
+      POSTGRES_DB: dbparity
+    ports:
+      - "5432:5432"

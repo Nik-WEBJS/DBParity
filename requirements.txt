@@ -1,0 +1,12 @@
+# Ядро
+pyyaml>=6.0
+jinja2>=3.1
+rich>=13.0
+
+# Тесты
+pytest>=8.0
+
+# Драйверы БД (опциональны — ставьте нужные)
+psycopg[binary]>=3.1   # PostgreSQL
+oracledb>=2.0          # Oracle (thin mode, без Instant Client)
+# pyodbc>=5.0          # MSSQL — требует системный ODBC-драйвер
