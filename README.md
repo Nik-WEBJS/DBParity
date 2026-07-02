@@ -11,7 +11,7 @@
 
 **Oracle / MSSQL / SQLite → PostgreSQL** · streaming row-by-row + DB-side hash mode · client-ready HTML reports
 
-[🇷🇺 Русская версия](README.ru.md) · [📊 Live demo report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/Nik-WEBJS/DBParity/main/docs/demo_report.html) · [🗺️ Roadmap](ROADMAP.md) · [🐛 Report a bug](https://github.com/Nik-WEBJS/DBParity/issues)
+[🇷🇺 Русская версия](README.ru.md) · [📊 Live demo report](https://nik-webjs.github.io/DBParity/demo_report.html) · [🗺️ Roadmap](ROADMAP.md) · [🐛 Report a bug](https://github.com/Nik-WEBJS/DBParity/issues)
 
 </div>
 

@@ -11,7 +11,7 @@
 
 **Oracle / MSSQL / SQLite → PostgreSQL** · потоковая сверка + DB-side hash-режим · отчёты для заказчика
 
-[🇬🇧 English version](README.md) · [📊 Живой демо-отчёт](https://htmlpreview.github.io/?https://raw.githubusercontent.com/Nik-WEBJS/DBParity/main/docs/demo_report.html) · [🗺️ Роадмап](ROADMAP.md) · [🐛 Сообщить о баге](https://github.com/Nik-WEBJS/DBParity/issues)
+[🇬🇧 English version](README.md) · [📊 Живой демо-отчёт](https://nik-webjs.github.io/DBParity/demo_report.html) · [🗺️ Роадмап](ROADMAP.md) · [🐛 Сообщить о баге](https://github.com/Nik-WEBJS/DBParity/issues)
 
 </div>
 
