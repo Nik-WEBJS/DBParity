@@ -33,6 +33,13 @@ class OracleAdapter(Adapter):
         if oracledb is None:  # pragma: no cover
             raise RuntimeError("Для oracle установите зависимость: pip install oracledb")
         super().__init__(endpoint)
+        # КРИТИЧНО для верификатора:
+        # 1) NUMBER по умолчанию приходит как float → потеря точности на
+        #    больших/дробных значениях → ложные результаты. Забираем Decimal.
+        # 2) LOB-локаторы → сразу значения (str/bytes), иначе сравнение
+        #    невозможно после закрытия курсора.
+        oracledb.defaults.fetch_decimals = True
+        oracledb.defaults.fetch_lobs = False
         o = endpoint.options
         self.conn = oracledb.connect(
             user=o.get("user"), password=o.get("password"), dsn=o.get("dsn"),
