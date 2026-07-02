@@ -1,7 +1,9 @@
 """Интеграционные тесты: демо-прогон end-to-end против EXPECTED."""
 import json
+import sqlite3
 
 from dbparity import cli
+from dbparity.config import Config, EndpointConfig
 from dbparity.core import engine
 from dbparity.demo.seed import EXPECTED, build_demo
 from dbparity.report.render import render_html, write_json
@@ -61,6 +63,27 @@ def test_traps_do_not_false_positive(tmp_path):
     assert "60" not in flagged and "70" not in flagged
     # а настоящие расхождения — должны
     assert {"10", "20", "30", "40"} <= flagged
+
+
+def test_text_pk_warning(tmp_path):
+    """Текстовый PK → предупреждение о коллациях, но не ошибка."""
+    for name in ("s.db", "d.db"):
+        c = sqlite3.connect(tmp_path / name)
+        c.execute("CREATE TABLE t (code TEXT PRIMARY KEY, v TEXT)")
+        c.executemany("INSERT INTO t VALUES (?, ?)", [("a", "1"), ("b", "2")])
+        c.commit()
+        c.close()
+    cfg = Config(
+        source=EndpointConfig("sqlite", None, {"path": str(tmp_path / "s.db")}),
+        target=EndpointConfig("sqlite", None, {"path": str(tmp_path / "d.db")}),
+    )
+    run = engine.run(cfg)
+    t = run.tables[0]
+    assert t.warnings and "коллаци" in t.warnings[0]
+    assert t.ok                      # предупреждение ≠ расхождение
+    assert run.equivalent
+    html = render_html(run)
+    assert "коллаци" in html         # предупреждение видно в отчёте
 
 
 def test_cli_demo_exit_code(tmp_path):

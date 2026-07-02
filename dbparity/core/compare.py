@@ -103,6 +103,17 @@ def compare_table(
     D = _Stream(dst_rows, norm_dst.row_normalizer(dst_logicals), pk_idx)
 
     while not (S.exhausted and D.exhausted):
+        # NULL в PK: merge по такой строке невозможен — отдельная категория
+        if not S.exhausted and None in S.pk:
+            res.null_pk += 1
+            add_sample(DiffKind.NULL_PK, S.raw)
+            S.advance()
+            continue
+        if not D.exhausted and None in D.pk:
+            res.null_pk += 1
+            add_sample(DiffKind.NULL_PK, D.raw)
+            D.advance()
+            continue
         if D.exhausted or (not S.exhausted and _lt(S.pk, D.pk)):
             res.missing_in_target += 1
             add_sample(DiffKind.MISSING_IN_TARGET, S.raw)

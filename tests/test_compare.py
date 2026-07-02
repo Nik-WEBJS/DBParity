@@ -65,6 +65,16 @@ def test_empty_both():
     assert r.ok and r.src_rows == 0 and r.dst_rows == 0
 
 
+def test_null_pk_isolated():
+    """Строки с NULL в PK не ломают merge и попадают в отдельную категорию."""
+    r = cmp([(None, "x"), (1, "a")], [(1, "a"), (None, "y")])
+    assert r.null_pk == 2
+    assert r.matched == 1
+    assert r.total_diffs == 2
+    kinds = {s.kind for s in r.samples}
+    assert DiffKind.NULL_PK in kinds
+
+
 def test_fast_path_parity_with_generic():
     """Fast-path (пер-колоночные нормализаторы) даёт тот же результат, что generic."""
     src = [(1, "a", 1.5, ""), (2, "b", 2.0, "x"), (4, "d", 4.0, None)]

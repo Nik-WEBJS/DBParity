@@ -148,6 +148,11 @@
             {% else %}<span class="badge bg-danger text-white">{{ t.total_diffs | num }} расхожд.</span>{% endif %}
           </div>
           <div class="card-body">
+            {% if t.warnings %}
+            <div class="alert alert-warning py-2 mb-3">
+              {% for w in t.warnings %}<div>{{ w }}</div>{% endfor %}
+            </div>
+            {% endif %}
             {% if t.error %}
               <div class="text-warning">{{ t.error }}</div>
             {% else %}
@@ -166,6 +171,8 @@
                 <div class="datagrid-content {{ 'text-danger' if t.extra_in_target }}">{{ t.extra_in_target | num }}</div></div>
               <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
                 <div class="datagrid-content {{ 'text-danger' if t.duplicate_pk }}">{{ t.duplicate_pk | num }}</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+                <div class="datagrid-content {{ 'text-danger' if t.null_pk }}">{{ t.null_pk | num }}</div></div>
               <div class="datagrid-item"><div class="datagrid-title">Время</div>
                 <div class="datagrid-content">{{ t.duration_s }} c</div></div>
             </div>
@@ -192,7 +199,8 @@
                         {% if s.kind == 'mismatch' %}<span class="badge bg-red-lt">значения</span>
                         {% elif s.kind == 'missing_in_target' %}<span class="badge bg-orange-lt">нет в приёмнике</span>
                         {% elif s.kind == 'extra_in_target' %}<span class="badge bg-yellow-lt">лишняя</span>
-                        {% else %}<span class="badge bg-purple-lt">дубль PK</span>{% endif %}
+                        {% elif s.kind == 'duplicate_pk' %}<span class="badge bg-purple-lt">дубль PK</span>
+                        {% else %}<span class="badge bg-pink-lt">NULL PK</span>{% endif %}
                       </td>
                       <td><code>{{ s.pk | join(', ') }}</code></td>
                       <td>

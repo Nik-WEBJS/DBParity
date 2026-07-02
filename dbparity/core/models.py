@@ -12,6 +12,7 @@ class DiffKind(str, Enum):
     EXTRA_IN_TARGET = "extra_in_target"       # лишняя строка в приёмнике
     MISMATCH = "mismatch"                     # PK совпал, значения различаются
     DUPLICATE_PK = "duplicate_pk"             # дубликат первичного ключа
+    NULL_PK = "null_pk"                       # NULL в PK — merge по такой строке невозможен
 
 
 @dataclass
@@ -33,15 +34,17 @@ class TableResult:
     missing_in_target: int = 0
     extra_in_target: int = 0
     duplicate_pk: int = 0
+    null_pk: int = 0
     samples: list = field(default_factory=list)
     column_mismatch_counts: dict = field(default_factory=dict)
+    warnings: list = field(default_factory=list)
     error: Optional[str] = None
     duration_s: float = 0.0
 
     @property
     def total_diffs(self) -> int:
         return (self.mismatched + self.missing_in_target
-                + self.extra_in_target + self.duplicate_pk)
+                + self.extra_in_target + self.duplicate_pk + self.null_pk)
 
     @property
     def ok(self) -> bool:
@@ -108,9 +111,11 @@ class RunResult:
             "missing_in_target": sum(x.missing_in_target for x in self.tables),
             "extra_in_target": sum(x.extra_in_target for x in self.tables),
             "duplicate_pk": sum(x.duplicate_pk for x in self.tables),
+            "null_pk": sum(x.null_pk for x in self.tables),
         }
         t["total_diffs"] = (t["mismatched"] + t["missing_in_target"]
-                            + t["extra_in_target"] + t["duplicate_pk"])
+                            + t["extra_in_target"] + t["duplicate_pk"]
+                            + t["null_pk"])
         base = max(t["src_rows"], t["dst_rows"])
         t["match_pct"] = round(t["matched"] / base * 100, 4) if base else 100.0
         return t

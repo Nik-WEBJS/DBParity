@@ -22,14 +22,18 @@ def _print_summary(console: Console, run) -> None:
     rt = RichTable(title=f"DBParity v{__version__}: "
                          f"{run.source_label} → {run.target_label}")
     for col in ("Таблица", "Src", "Dst", "Совпало", "Разл.",
-                "Нет в dst", "Лишние", "Дубли", "Статус"):
+                "Нет в dst", "Лишние", "Дубли", "NULL PK", "Статус"):
         rt.add_column(col, justify="right" if col not in ("Таблица", "Статус") else "left")
     for t in run.tables:
         rt.add_row(t.table, str(t.src_rows), str(t.dst_rows), str(t.matched),
                    str(t.mismatched), str(t.missing_in_target),
-                   str(t.extra_in_target), str(t.duplicate_pk),
+                   str(t.extra_in_target), str(t.duplicate_pk), str(t.null_pk),
                    _STATUS[t.status])
     console.print(rt)
+
+    for t in run.tables:
+        for w in t.warnings:
+            console.print(f"[yellow]Предупреждение {t.table}:[/yellow] {w}")
 
     if run.tables_only_in_source:
         console.print(f"[orange3]Таблицы только в источнике:[/orange3] "

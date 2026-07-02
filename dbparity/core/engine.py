@@ -79,6 +79,14 @@ def run(config: Config) -> RunResult:
                 except Exception as e:  # noqa: BLE001 — ошибки уходят в отчёт
                     tr = TableResult(table=t, pk=pk,
                                      error=f"{type(e).__name__}: {e}")
+                pk_text = [p for p in pk
+                           if src_log.get(p) == "text" or dst_log.get(p) == "text"]
+                if pk_text:
+                    tr.warnings.append(
+                        f"PK содержит текстовые колонки ({', '.join(pk_text)}): "
+                        "порядок сортировки может различаться между движками "
+                        "из-за коллаций. Проверьте COLLATE/NLS_SORT или "
+                        "используйте числовой PK.")
             tr.duration_s = round(time.perf_counter() - t0, 3)
             results.append(tr)
 
