@@ -11,6 +11,7 @@ from .compare import compare_table
 from .models import RunResult, TableResult
 from .normalize import Normalizer
 from .schema_diff import diff_schemas
+from .segment import digest_eligible, hash_compare_table
 
 
 def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
@@ -36,24 +37,37 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
         src_log = {c.name.lower(): c.logical for c in ss.columns}
         dst_log = {c.name.lower(): c.logical for c in ds.columns}
         progress = (lambda n: on_progress(t, n)) if on_progress else None
-        src_stream = src.stream_rows(
-            src_name, [src_names[c] for c in common_cols],
-            [src_names[p] for p in pk], config.batch_size)
-        dst_stream = dst.stream_rows(
-            dst_name, [dst_names[c] for c in common_cols],
-            [dst_names[p] for p in pk], config.batch_size)
+        eligible, why = digest_eligible(
+            config, src, dst, pk, common_cols, src_log, dst_log)
         try:
-            tr = compare_table(
-                t, common_cols, pk, src_stream, dst_stream,
-                norm_src, norm_dst,
-                sample_limit=config.sample_limit,
-                mask_values=config.mask_values,
-                src_logicals=[src_log[c] for c in common_cols],
-                dst_logicals=[dst_log[c] for c in common_cols],
-                progress=progress,
-            )
+            if eligible:
+                tr = hash_compare_table(
+                    t, src, dst, src_name, dst_name, common_cols, pk[0],
+                    src_names, dst_names,
+                    [src_log[c] for c in common_cols],
+                    [dst_log[c] for c in common_cols],
+                    norm_src, norm_dst, config, progress)
+            else:
+                src_stream = src.stream_rows(
+                    src_name, [src_names[c] for c in common_cols],
+                    [src_names[p] for p in pk], config.batch_size)
+                dst_stream = dst.stream_rows(
+                    dst_name, [dst_names[c] for c in common_cols],
+                    [dst_names[p] for p in pk], config.batch_size)
+                tr = compare_table(
+                    t, common_cols, pk, src_stream, dst_stream,
+                    norm_src, norm_dst,
+                    sample_limit=config.sample_limit,
+                    mask_values=config.mask_values,
+                    src_logicals=[src_log[c] for c in common_cols],
+                    dst_logicals=[dst_log[c] for c in common_cols],
+                    progress=progress,
+                )
         except Exception as e:  # noqa: BLE001 — ошибки уходят в отчёт
             tr = TableResult(table=t, pk=pk, error=f"{type(e).__name__}: {e}")
+        if config.strategy == "hash" and not eligible:
+            tr.warnings.append(
+                f"hash-режим недоступен ({why}) — использована потоковая сверка")
         pk_text = [p for p in pk
                    if src_log.get(p) == "text" or dst_log.get(p) == "text"]
         if pk_text:

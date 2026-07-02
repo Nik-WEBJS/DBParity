@@ -38,6 +38,9 @@ class Config:
     batch_size: int = 5000
     mask_values: bool = False
     workers: int = 1
+    strategy: str = "auto"              # auto | stream | hash
+    hash_leaf_rows: int = 20000         # шаг бакета по PK (≈ строк в сегменте
+                                        # при плотном ключе)
     report: ReportConfig = field(default_factory=ReportConfig)
 
     def summary(self) -> dict:
@@ -56,6 +59,7 @@ class Config:
             "batch_size": self.batch_size,
             "mask_values": self.mask_values,
             "workers": self.workers,
+            "strategy": self.strategy,
         }
 
 
@@ -79,6 +83,13 @@ def _rules(data: dict) -> NormalizeRules:
     return NormalizeRules(**data)
 
 
+def _strategy(value) -> str:
+    v = str(value).lower()
+    if v not in ("auto", "stream", "hash"):
+        raise ValueError(f"strategy: ожидается auto|stream|hash, получено {value!r}")
+    return v
+
+
 def config_from_dict(data: dict) -> Config:
     if not isinstance(data, dict):
         raise ValueError("Конфиг пуст или имеет неверный формат")
@@ -99,6 +110,8 @@ def config_from_dict(data: dict) -> Config:
         batch_size=int(data.get("batch_size", 5000)),
         mask_values=bool(data.get("mask_values", False)),
         workers=max(1, int(data.get("workers", 1))),
+        strategy=_strategy(data.get("strategy", "auto")),
+        hash_leaf_rows=max(1, int(data.get("hash_leaf_rows", 20000))),
         report=ReportConfig(html=report.get("html"), json=report.get("json")),
     )
 

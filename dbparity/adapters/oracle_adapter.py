@@ -80,19 +80,87 @@ class OracleAdapter(Adapter):
     def stream_rows(
         self, table: str, columns: Sequence[str],
         order_by: Sequence[str], batch: int,
+        pk_range=None,
     ) -> Iterator[tuple]:  # pragma: no cover
         def q(name: str) -> str:
             return '"' + name.replace('"', '""') + '"'
 
+        where, params = "", {}
+        if pk_range is not None:
+            col, lo, hi = pk_range
+            where = f" WHERE {q(col)} >= :lo AND {q(col)} <= :hi"
+            params = {"lo": lo, "hi": hi}
         cur = self.conn.cursor()
         cur.arraysize = batch
         cur.execute(
             f'SELECT {", ".join(q(c) for c in columns)} '
-            f'FROM {q(self.owner)}.{q(table.upper())} '
-            f'ORDER BY {", ".join(q(c) for c in order_by)}'
+            f'FROM {q(self.owner)}.{q(table.upper())}{where} '
+            f'ORDER BY {", ".join(q(c) for c in order_by)}',
+            params,
         )
         for row in cur:
             yield tuple(row)
+
+    # ---- digest-API (experimental: не обкатан на живом Oracle) --------------
+
+    supports_digest = True
+
+    @staticmethod
+    def _q(name: str) -> str:  # pragma: no cover
+        return '"' + name.replace('"', '""') + '"'
+
+    def _canon(self, col: str, logical: str, rtrim: bool) -> str:  # pragma: no cover
+        q = self._q(col)
+        if logical == "number":
+            # TM9: 100 → '100', 1.5 → '1.5'. Нюанс: 0.5 → '.5' (не '0.5') —
+            # для таких значений хэш разойдётся с PG и сегмент уйдёт в
+            # row-режим: медленнее, но корректно.
+            return f"CASE WHEN {q} IS NULL THEN 'N' ELSE TO_CHAR({q}, 'TM9') END"
+        if logical == "bool":
+            return (f"CASE WHEN {q} IS NULL THEN 'N' "
+                    f"WHEN {q} = 1 THEN '1' ELSE '0' END")
+        v = f"RTRIM({q}, ' ')" if rtrim else q
+        # В Oracle '' == NULL, поэтому пустые строки попадают в ветку 'N';
+        # расхождение с приёмником уводит сегмент в row-режим, где действует
+        # правило oracle_empty_string_is_null.
+        return (f"CASE WHEN {q} IS NULL THEN 'N' "
+                f"ELSE LOWER(RAWTOHEX(STANDARD_HASH({v}, 'MD5'))) END")
+
+    def pk_bounds(self, table: str, pk_col: str):  # pragma: no cover
+        cur = self.conn.cursor()
+        cur.execute(
+            f"SELECT MIN({self._q(pk_col)}), MAX({self._q(pk_col)}) "
+            f"FROM {self._q(self.owner)}.{self._q(table.upper())} "
+            f"WHERE {self._q(pk_col)} IS NOT NULL")
+        row = cur.fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
+    def null_pk_count(self, table: str, pk_col: str) -> int:  # pragma: no cover
+        cur = self.conn.cursor()
+        cur.execute(
+            f"SELECT COUNT(*) FROM {self._q(self.owner)}.{self._q(table.upper())} "
+            f"WHERE {self._q(pk_col)} IS NULL")
+        return int(cur.fetchone()[0])
+
+    def bucket_digests(self, table: str, columns, logicals, pk_col: str,
+                       lo, step: int, hi, rtrim: bool = False) -> dict:  # pragma: no cover
+        parts = " || '|' || ".join(
+            self._canon(c, lg, rtrim) for c, lg in zip(columns, logicals))
+        q = self._q(pk_col)
+        sql_text = (
+            f"SELECT b, COUNT(*), "
+            f"COALESCE(SUM(TO_NUMBER(SUBSTR(h, 1, 8), 'XXXXXXXX')), 0), "
+            f"COALESCE(SUM(TO_NUMBER(SUBSTR(h, 9, 8), 'XXXXXXXX')), 0), "
+            f"COALESCE(SUM(TO_NUMBER(SUBSTR(h, 17, 8), 'XXXXXXXX')), 0) "
+            f"FROM (SELECT FLOOR(({q} - :lo1) / :st) AS b, "
+            f"LOWER(RAWTOHEX(STANDARD_HASH({parts}, 'MD5'))) AS h "
+            f"FROM {self._q(self.owner)}.{self._q(table.upper())} "
+            f"WHERE {q} >= :lo2 AND {q} <= :hi) GROUP BY b"
+        )
+        cur = self.conn.cursor()
+        cur.execute(sql_text, {"lo1": lo, "st": step, "lo2": lo, "hi": hi})
+        return {int(b): (int(c), int(s1), int(s2), int(s3))
+                for b, c, s1, s2, s3 in cur.fetchall()}
 
     def close(self) -> None:  # pragma: no cover
         self.conn.close()

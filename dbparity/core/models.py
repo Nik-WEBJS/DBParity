@@ -40,6 +40,11 @@ class TableResult:
     warnings: list = field(default_factory=list)
     error: Optional[str] = None
     duration_s: float = 0.0
+    mode: str = "stream"                # stream | hash
+    rows_hash_matched: int = 0          # строк зачтено по совпавшим сегментам
+    rows_streamed: int = 0              # строк детализировано потоково (src+dst)
+    segments_matched: int = 0
+    segments_streamed: int = 0
 
     @property
     def total_diffs(self) -> int:

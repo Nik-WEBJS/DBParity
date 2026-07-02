@@ -52,6 +52,10 @@ class PostgresAdapter(Adapter):
         # server_side=False — обычный курсор (для окружений без DECLARE CURSOR)
         self.server_side = bool(o.get("server_side", True))
         self.conn = psycopg.connect(dsn)
+        # prepare_threshold: null в YAML отключает авто-prepare (нужно для
+        # окружений с общей сессией вроде PGlite/пулеров в transaction-режиме)
+        if "prepare_threshold" in o:
+            self.conn.prepare_threshold = o["prepare_threshold"]
 
     def list_tables(self) -> List[str]:  # pragma: no cover — нет сервера в CI
         with self.conn.cursor() as cur:
@@ -87,27 +91,96 @@ class PostgresAdapter(Adapter):
     def stream_rows(
         self, table: str, columns: Sequence[str],
         order_by: Sequence[str], batch: int,
+        pk_range=None,
     ) -> Iterator[tuple]:  # pragma: no cover
-        q = _sql.SQL("SELECT {cols} FROM {tbl} ORDER BY {order}").format(
+        where = _sql.SQL("")
+        params = ()
+        if pk_range is not None:
+            col, lo, hi = pk_range
+            where = _sql.SQL(" WHERE {c} >= %s AND {c} <= %s").format(
+                c=_sql.Identifier(col))
+            params = (lo, hi)
+        q = _sql.SQL("SELECT {cols} FROM {tbl}{where} ORDER BY {order}").format(
             cols=_sql.SQL(", ").join(_sql.Identifier(c) for c in columns),
             tbl=_sql.Identifier(self.schema, table),
+            where=where,
             order=_sql.SQL(", ").join(_sql.Identifier(c) for c in order_by),
         )
         if self.server_side:
-            with self.conn.cursor(name=f"dbparity_{abs(hash(table))}") as cur:
+            with self.conn.cursor(name=f"dbparity_{abs(hash((table, pk_range)))}") as cur:
                 cur.itersize = batch
-                cur.execute(q)
+                cur.execute(q, params)
                 for row in cur:
                     yield tuple(row)
         else:
             with self.conn.cursor() as cur:
-                cur.execute(q)
+                cur.execute(q, params)
                 while True:
                     rows = cur.fetchmany(batch)
                     if not rows:
                         break
                     for row in rows:
                         yield tuple(row)
+
+    # ---- digest-API ----------------------------------------------------------
+
+    supports_digest = True
+
+    def _ident(self, col: str) -> str:  # pragma: no cover
+        return '"' + col.replace('"', '""') + '"'
+
+    def _canon(self, col: str, logical: str, rtrim: bool) -> str:  # pragma: no cover
+        q = self._ident(col)
+        if logical == "number":
+            # trim_scale (PG13+): 100.00 → '100', 1.50 → '1.5' — совпадает
+            # с канонизацией sqlite/Oracle
+            return (f"CASE WHEN {q} IS NULL THEN 'N' "
+                    f"ELSE trim_scale({q}::numeric)::text END")
+        if logical == "bool":
+            return (f"CASE WHEN {q} IS NULL THEN 'N' "
+                    f"WHEN {q} THEN '1' ELSE '0' END")
+        v = f"rtrim({q}, ' ')" if rtrim else q
+        return f"CASE WHEN {q} IS NULL THEN 'N' ELSE md5({v}) END"
+
+    def _tbl(self) -> str:  # pragma: no cover
+        return f'{self._ident(self.schema)}.'
+
+    def pk_bounds(self, table: str, pk_col: str):  # pragma: no cover
+        q = self._ident(pk_col)
+        with self.conn.cursor() as cur:
+            cur.execute(f"SELECT MIN({q}), MAX({q}) FROM "
+                        f"{self._tbl()}{self._ident(table)} WHERE {q} IS NOT NULL")
+            row = cur.fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
+    def null_pk_count(self, table: str, pk_col: str) -> int:  # pragma: no cover
+        q = self._ident(pk_col)
+        with self.conn.cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) FROM {self._tbl()}{self._ident(table)} "
+                        f"WHERE {q} IS NULL")
+            return int(cur.fetchone()[0])
+
+    def bucket_digests(self, table: str, columns, logicals, pk_col: str,
+                       lo, step: int, hi, rtrim: bool = False) -> dict:  # pragma: no cover
+        parts = " || '|' || ".join(
+            self._canon(c, lg, rtrim) for c, lg in zip(columns, logicals))
+        q = self._ident(pk_col)
+        sql_text = (
+            f"SELECT b, COUNT(*), "
+            f"COALESCE(SUM(('x' || substr(h, 1, 8))::bit(32)::bigint), 0), "
+            f"COALESCE(SUM(('x' || substr(h, 9, 8))::bit(32)::bigint), 0), "
+            f"COALESCE(SUM(('x' || substr(h, 17, 8))::bit(32)::bigint), 0) "
+            f"FROM (SELECT floor(({q} - %s)::numeric / %s)::bigint AS b, "
+            f"md5({parts}) AS h "
+            f"FROM {self._tbl()}{self._ident(table)} "
+            f"WHERE {q} >= %s AND {q} <= %s) sub GROUP BY b"
+        )
+        out = {}
+        with self.conn.cursor() as cur:
+            cur.execute(sql_text, (lo, step, lo, hi))
+            for b, c, s1, s2, s3 in cur.fetchall():
+                out[int(b)] = (int(c), int(s1), int(s2), int(s3))
+        return out
 
     def close(self) -> None:  # pragma: no cover
         self.conn.close()

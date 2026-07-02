@@ -73,6 +73,8 @@ rules:
   float_epsilon: 1.0e-9
 mask_values: false                   # true → hide values in the report
 workers: 4                           # compare N tables in parallel
+strategy: auto                       # auto | stream | hash (see below)
+hash_leaf_rows: 20000                # PK-bucket width for hash mode
 report:
   html: report.html
   json: report.json
@@ -88,8 +90,20 @@ Use it as a mandatory CI/CD gate before switching traffic.
 Streaming merge, O(n) time, O(batch) memory — the full table never
 sits in RAM. `python3 bench/bench.py 1000000` (1M rows per side,
 7 columns): **~400K rows/s** with the type-compiled fast path
-(~310K generic). Next on the roadmap: DB-side segment hashing to skip
-identical PK ranges entirely.
+(~310K generic).
+
+**Hash mode** (`strategy: hash`, or `auto` when eligible): both databases
+compute canonical md5 aggregates per PK bucket in a single scan
+(`GROUP BY floor((pk-lo)/step)`); only mismatching buckets are streamed
+for detailed comparison. On the 300K-row bench with 3 planted diffs it
+transfers **60K rows instead of 600K (10×)** — the win that matters over
+a network. Correctness property: an imperfect canonical mapping only
+causes extra drill-down (slower), never a false skip. Eligibility:
+single numeric PK, column types number/text/bool (float/datetime/bytes
+fall back to stream automatically); a hash mismatch is always re-verified
+by the row-level engine with full normalization. Note: the sqlite bench
+implements md5 as a Python UDF, so its wall-time understates gains on
+PostgreSQL/Oracle where hashing is native.
 
 ## Testing
 

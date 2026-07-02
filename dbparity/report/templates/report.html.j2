@@ -142,6 +142,7 @@
           <div class="card-header d-flex align-items-center justify-content-between">
             <h3 class="card-title mb-0"><code>{{ t.table }}</code>
               <span class="text-secondary ms-2">PK: {{ t.pk | join(', ') if t.pk else '—' }}</span>
+              {% if t.mode == 'hash' %}<span class="badge bg-cyan-lt ms-2" title="Сегментные DB-side хэши">hash</span>{% endif %}
             </h3>
             {% if t.status == 'ok' %}<span class="badge bg-success text-white">OK</span>
             {% elif t.status == 'error' %}<span class="badge bg-warning text-white">ОШИБКА</span>
@@ -175,6 +176,14 @@
                 <div class="datagrid-content {{ 'text-danger' if t.null_pk }}">{{ t.null_pk | num }}</div></div>
               <div class="datagrid-item"><div class="datagrid-title">Время</div>
                 <div class="datagrid-content">{{ t.duration_s }} c</div></div>
+              {% if t.mode == 'hash' %}
+              <div class="datagrid-item"><div class="datagrid-title">Зачтено по хэшу</div>
+                <div class="datagrid-content">{{ t.rows_hash_matched | num }} строк
+                  ({{ t.segments_matched }} сегм.)</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Детализировано</div>
+                <div class="datagrid-content">{{ t.rows_streamed | num }} строк
+                  ({{ t.segments_streamed }} сегм.)</div></div>
+              {% endif %}
             </div>
             <div class="progress progress-sm mb-3">
               <div class="progress-bar bg-success" style="width: {{ t.match_pct }}%"></div>

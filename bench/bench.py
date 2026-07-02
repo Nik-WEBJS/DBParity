@@ -35,8 +35,9 @@ def build(path: Path, mutate: bool) -> None:
     if path.exists():
         path.unlink()
     conn = sqlite3.connect(path)
+    # NUMERIC (не REAL): колонка проходит по типам в hash-режим
     conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, email TEXT,"
-                 " balance REAL, is_active INTEGER, created_at TEXT, notes TEXT)")
+                 " balance NUMERIC, is_active INTEGER, created_at TEXT, notes TEXT)")
     batch = []
     for i in range(1, N + 1):
         batch.append(gen(i, mutate))
@@ -74,9 +75,43 @@ def bench(label: str, src: Path, dst: Path, **kw) -> float:
     return dt
 
 
+def bench_hash(src: Path) -> float:
+    """Целевой сценарий hash-режима: почти идентичные БД (3 расхождения).
+
+    Замечание: в sqlite md5 — это Python-функция (дорого); на PG/Oracle
+    хэши считаются нативно, там выигрыш ещё больше.
+    """
+    import shutil
+
+    from dbparity.config import Config, EndpointConfig
+    from dbparity.core import engine as _engine
+
+    few = DB_DIR / f"few_v2_{N}.db"
+    shutil.copyfile(src, few)
+    conn = sqlite3.connect(few)
+    conn.execute("UPDATE t SET balance = balance + 0.01 WHERE id IN (?,?,?)",
+                 (5, N // 2, N - 5))
+    conn.commit()
+    conn.close()
+
+    cfg = Config(
+        source=EndpointConfig("sqlite", None, {"path": str(src)}),
+        target=EndpointConfig("sqlite", None, {"path": str(few)}),
+        strategy="hash", hash_leaf_rows=10_000)
+    t0 = time.perf_counter()
+    run = _engine.run(cfg)
+    dt = time.perf_counter() - t0
+    tr = run.tables[0]
+    rate = f"{int(2 * N / dt):,}".replace(",", " ")
+    streamed = f"{tr.rows_streamed:,}".replace(",", " ")
+    print(f"{'hash (3 диффа, DB-side)':24s} {dt:7.2f} c   {rate:>11} строк/с   "
+          f"diffs={tr.total_diffs} (потоково лишь {streamed} строк)")
+    return dt
+
+
 def main() -> None:
     DB_DIR.mkdir(exist_ok=True)
-    src, dst = DB_DIR / f"src_{N}.db", DB_DIR / f"dst_{N}.db"
+    src, dst = DB_DIR / f"src_v2_{N}.db", DB_DIR / f"dst_v2_{N}.db"
     if "--rebuild" in sys.argv or not (src.exists() and dst.exists()):
         t0 = time.perf_counter()
         build(src, mutate=False)
@@ -86,7 +121,13 @@ def main() -> None:
     t_gen = bench("generic (isinstance)", src, dst)
     t_fast = bench("fast-path (по типам)", src, dst,
                    src_logicals=LOGICALS, dst_logicals=LOGICALS)
-    print(f"Ускорение fast-path: ×{t_gen / t_fast:.2f}")
+    if N <= 400_000 or "--hash" in sys.argv:
+        t_hash = bench_hash(src)
+        print(f"Ускорение fast-path: ×{t_gen / t_fast:.2f}; "
+              f"hash-режим (3 диффа): ×{t_gen / t_hash:.2f}")
+    else:
+        print(f"Ускорение fast-path: ×{t_gen / t_fast:.2f} "
+              f"(hash-замер на N>400K: добавьте --hash)")
 
 
 if __name__ == "__main__":

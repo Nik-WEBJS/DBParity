@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — 2026-07-02
+
+Big tables: hash-режим.
+
+- **feat**: бакетные DB-side хэши за один скан (`strategy: auto|stream|hash`,
+  `hash_leaf_rows`) — совпавшие PK-бакеты зачитываются агрегатами без
+  передачи строк; расходящиеся детализируются потоковым merge с полной
+  нормализацией. На бенче 300K×2 с 3 диффами передаётся 60K строк вместо 600K
+- **feat**: digest-API адаптеров (sqlite: Python-UDF md5; PG: md5+trim_scale;
+  Oracle: STANDARD_HASH+TM9, experimental); кросс-движковая канонизация
+  чисел (`100.00` == `100` == `100.0`) проверена live-тестом sqlite↔PostgreSQL
+- **feat**: pk_range-фильтр в stream_rows всех адаптеров
+- **fix(postgres)**: опция `prepare_threshold` (окружения с общей сессией:
+  PGlite, пулеры в transaction-режиме)
+- Паритет hash vs stream закреплён тестами; NULL-PK и пустые таблицы
+  корректно обрабатываются в hash-режиме
+
 ## 0.2.0 — 2026-07-02
 
 Correctness & Scale basics (см. ROADMAP.md).

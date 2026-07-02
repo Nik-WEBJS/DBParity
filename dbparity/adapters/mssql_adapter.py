@@ -76,15 +76,22 @@ class MSSQLAdapter(Adapter):
     def stream_rows(
         self, table: str, columns: Sequence[str],
         order_by: Sequence[str], batch: int,
+        pk_range=None,
     ) -> Iterator[tuple]:  # pragma: no cover
         def q(name: str) -> str:
             return "[" + name.replace("]", "]]") + "]"
 
+        where, params = "", ()
+        if pk_range is not None:
+            col, lo, hi = pk_range
+            where = f" WHERE {q(col)} >= ? AND {q(col)} <= ?"
+            params = (lo, hi)
         cur = self.conn.cursor()
         cur.execute(
             f'SELECT {", ".join(q(c) for c in columns)} '
-            f'FROM {q(self.schema)}.{q(table)} '
-            f'ORDER BY {", ".join(q(c) for c in order_by)}'
+            f'FROM {q(self.schema)}.{q(table)}{where} '
+            f'ORDER BY {", ".join(q(c) for c in order_by)}',
+            *params,
         )
         while True:
             rows = cur.fetchmany(batch)
