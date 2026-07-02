@@ -1,10 +1,26 @@
-"""Модели результатов сверки."""
+"""Модели результатов сверки.
+
+Здесь же живёт версия схемы JSON-отчёта (REPORT_SCHEMA_VERSION) —
+формат отчёта заморожен и описан в docs/report-format.md.
+"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
+
+#: Версия схемы JSON-отчёта (ключ "schema_version" в RunResult.to_dict()).
+#:
+#: Правила эволюции формата (semver-гарантии, роадмап v0.9):
+#: - ДОБАВЛЕНИЕ новых ключей — минорное изменение: версия НЕ меняется,
+#:   потребители обязаны игнорировать незнакомые ключи. Каждый новый ключ
+#:   обязан быть задокументирован в docs/report-format.md.
+#: - УДАЛЕНИЕ, ПЕРЕИМЕНОВАНИЕ ключа либо смена типа/семантики значения —
+#:   мажорное изменение: REPORT_SCHEMA_VERSION инкрементируется, изменение
+#:   описывается в docs/report-format.md и CHANGELOG.
+#: Замороженный набор ключей v1 охраняется тестом tests/test_report_schema.py.
+REPORT_SCHEMA_VERSION = 1
 
 
 class DiffKind(str, Enum):
@@ -126,7 +142,14 @@ class RunResult:
         return t
 
     def to_dict(self) -> dict:
-        d = asdict(self)
+        """Словарь для JSON-отчёта. Формат заморожен: docs/report-format.md.
+
+        Первым смысловым полем идёт "schema_version" — потребители проверяют
+        его до разбора остального. Правила эволюции ключей — в докстринге
+        константы REPORT_SCHEMA_VERSION выше.
+        """
+        d: dict = {"schema_version": REPORT_SCHEMA_VERSION}
+        d.update(asdict(self))
         d["equivalent"] = self.equivalent
         d["totals"] = self.totals
         for tr, src in zip(d["tables"], self.tables):

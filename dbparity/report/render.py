@@ -8,7 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .. import __version__
-from ..core.models import RunResult
+from ..core.models import REPORT_SCHEMA_VERSION, RunResult
 
 _TEMPLATES = Path(__file__).parent / "templates"
 
@@ -42,11 +42,16 @@ def _chart_data(run: RunResult) -> dict:
 
 def render_html(run: RunResult) -> str:
     tpl = _env().get_template("report.html.j2")
+    # Версия схемы отчёта дописывается к строке generated: обе переменные
+    # используются только в футере шаблона, так футер получает
+    # "· схема отчёта vN" без правки самого шаблона.
+    generated = (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                 + f" · схема отчёта v{REPORT_SCHEMA_VERSION}")
     return tpl.render(
         run=run,
         totals=run.totals,
         chart=_chart_data(run),
-        generated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        generated=generated,
         version=__version__,
     )
 
