@@ -37,6 +37,7 @@ class Config:
     sample_limit: int = 50
     batch_size: int = 5000
     mask_values: bool = False
+    workers: int = 1
     report: ReportConfig = field(default_factory=ReportConfig)
 
     def summary(self) -> dict:
@@ -54,6 +55,7 @@ class Config:
             "sample_limit": self.sample_limit,
             "batch_size": self.batch_size,
             "mask_values": self.mask_values,
+            "workers": self.workers,
         }
 
 
@@ -96,6 +98,7 @@ def config_from_dict(data: dict) -> Config:
         sample_limit=int(data.get("sample_limit", 50)),
         batch_size=int(data.get("batch_size", 5000)),
         mask_values=bool(data.get("mask_values", False)),
+        workers=max(1, int(data.get("workers", 1))),
         report=ReportConfig(html=report.get("html"), json=report.get("json")),
     )
 

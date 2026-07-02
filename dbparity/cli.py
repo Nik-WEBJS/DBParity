@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import threading
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table as RichTable
 
 from . import __version__
@@ -77,9 +79,12 @@ def main(argv=None) -> int:
     pc.add_argument("-c", "--config", required=True, help="путь к config.yaml")
     pc.add_argument("--html", help="переопределить путь HTML-отчёта")
     pc.add_argument("--json", help="переопределить путь JSON-отчёта")
+    pc.add_argument("--workers", type=int,
+                    help="сверять N таблиц параллельно (соединение на поток)")
 
     pd = sub.add_parser("demo", help="Демо на встроенных данных с расхождениями")
     pd.add_argument("--outdir", default="demo_out", help="каталог для демо-файлов")
+    pd.add_argument("--workers", type=int, help="параллельные таблицы")
 
     args = parser.parse_args(argv)
     console = Console()
@@ -95,7 +100,26 @@ def main(argv=None) -> int:
                 cfg.report.html = args.html
             if args.json:
                 cfg.report.json = args.json
-        run = engine.run(cfg)
+        if args.workers:
+            cfg.workers = max(1, args.workers)
+
+        progress_ui = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            TextColumn("{task.completed:>10.0f} строк"),
+            console=console, transient=True,
+        )
+        task_ids = {}
+        lock = threading.Lock()
+
+        def on_progress(table: str, n: int) -> None:
+            with lock:
+                if table not in task_ids:
+                    task_ids[table] = progress_ui.add_task(table, total=None)
+                progress_ui.update(task_ids[table], completed=n)
+
+        with progress_ui:
+            run = engine.run(cfg, on_progress=on_progress)
     except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Ошибка:[/bold red] {e}")
         return 2

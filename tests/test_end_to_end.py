@@ -65,6 +65,29 @@ def test_traps_do_not_false_positive(tmp_path):
     assert {"10", "20", "30", "40"} <= flagged
 
 
+def test_parallel_workers_match_sequential(tmp_path):
+    """workers=3 даёт побитово те же результаты, что последовательный прогон."""
+    import dataclasses
+    cfg = build_demo(tmp_path)
+    seq = engine.run(cfg)
+    par = engine.run(dataclasses.replace(cfg, workers=3))
+    assert [t.table for t in par.tables] == [t.table for t in seq.tables]
+    assert {t.table: (t.total_diffs, t.matched, t.src_rows, t.dst_rows)
+            for t in par.tables} == \
+           {t.table: (t.total_diffs, t.matched, t.src_rows, t.dst_rows)
+            for t in seq.tables}
+    assert par.totals == seq.totals
+
+
+def test_progress_callback(tmp_path):
+    """Колбэк прогресса получает финальные счётчики строк по таблицам."""
+    cfg = build_demo(tmp_path)
+    seen = {}
+    engine.run(cfg, on_progress=lambda t, n: seen.__setitem__(t, n))
+    assert seen["orders"] == 5000 + 5000        # src + dst
+    assert seen["customers"] == 1200 + 1199
+
+
 def test_text_pk_warning(tmp_path):
     """Текстовый PK → предупреждение о коллациях, но не ошибка."""
     for name in ("s.db", "d.db"):

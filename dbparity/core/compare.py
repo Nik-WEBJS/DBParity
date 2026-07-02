@@ -84,6 +84,7 @@ def compare_table(
     mask_values: bool = False,
     src_logicals: Optional[Sequence[str]] = None,
     dst_logicals: Optional[Sequence[str]] = None,
+    progress=None,
 ) -> TableResult:
     res = TableResult(table=table, pk=list(pk_columns))
     pk_idx = [list(columns).index(c) for c in pk_columns]
@@ -101,8 +102,14 @@ def compare_table(
 
     S = _Stream(src_rows, norm_src.row_normalizer(src_logicals), pk_idx)
     D = _Stream(dst_rows, norm_dst.row_normalizer(dst_logicals), pk_idx)
+    last_report = 0
 
     while not (S.exhausted and D.exhausted):
+        if progress is not None:
+            n = S.count + D.count
+            if n - last_report >= 20_000:
+                progress(n)
+                last_report = n
         # NULL в PK: merge по такой строке невозможен — отдельная категория
         if not S.exhausted and None in S.pk:
             res.null_pk += 1
@@ -146,6 +153,8 @@ def compare_table(
             D.advance()
             note_dup(D)
 
+    if progress is not None:
+        progress(S.count + D.count)
     res.src_rows = S.count
     res.dst_rows = D.count
     return res
