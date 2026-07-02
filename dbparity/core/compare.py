@@ -51,6 +51,7 @@ class _Stream:
         self.raw: Any = None
         self.n: Optional[tuple] = None
         self.pk: Optional[tuple] = None
+        self.prev: Optional[tuple] = None   # последний потреблённый PK
         self.dup = False
         self.count = 0
         self.advance()
@@ -61,6 +62,7 @@ class _Stream:
 
     def advance(self) -> None:
         prev_pk = self.pk
+        self.prev = prev_pk
         raw = next(self._it, _SENTINEL)
         if raw is _SENTINEL:
             self.raw, self.n, self.pk, self.dup = _SENTINEL, None, None, False
@@ -85,8 +87,14 @@ def compare_table(
     src_logicals: Optional[Sequence[str]] = None,
     dst_logicals: Optional[Sequence[str]] = None,
     progress=None,
+    initial: Optional[TableResult] = None,
+    checkpoint=None,
+    checkpoint_every: int = 0,
 ) -> TableResult:
-    res = TableResult(table=table, pk=list(pk_columns))
+    # initial — восстановленный частичный результат (resume): счётчики
+    # продолжают накапливаться поверх него
+    res = initial if initial is not None else TableResult(
+        table=table, pk=list(pk_columns))
     pk_idx = [list(columns).index(c) for c in pk_columns]
     val_idx = [i for i in range(len(columns)) if i not in pk_idx]
 
@@ -103,6 +111,8 @@ def compare_table(
     S = _Stream(src_rows, norm_src.row_normalizer(src_logicals), pk_idx)
     D = _Stream(dst_rows, norm_dst.row_normalizer(dst_logicals), pk_idx)
     last_report = 0
+    last_ckpt = 0
+    base_src, base_dst = res.src_rows, res.dst_rows   # база из initial (resume)
 
     while not (S.exhausted and D.exhausted):
         if progress is not None:
@@ -110,6 +120,25 @@ def compare_table(
             if n - last_report >= 20_000:
                 progress(n)
                 last_report = n
+        if checkpoint is not None and checkpoint_every > 0:
+            n = S.count + D.count
+            if n - last_ckpt >= checkpoint_every:
+                # фронтир мержа: всё с pk < wm уже учтено
+                if S.exhausted:
+                    wm = D.pk
+                elif D.exhausted:
+                    wm = S.pk
+                else:
+                    wm = S.pk if _lt(S.pk, D.pk) else D.pk
+                # дубликат на границе: wm совпадает с уже потреблённым PK —
+                # безопасной точки нет, откладываем чекпоинт
+                if wm is not None and wm != S.prev and wm != D.prev:
+                    # буферная (вытянутая, но не обработанная) строка каждой
+                    # стороны будет прочитана заново при resume — не считаем
+                    res.src_rows = base_src + S.count - (0 if S.exhausted else 1)
+                    res.dst_rows = base_dst + D.count - (0 if D.exhausted else 1)
+                    checkpoint(res, wm[0])
+                    last_ckpt = n
         # NULL в PK: merge по такой строке невозможен — отдельная категория
         if not S.exhausted and None in S.pk:
             res.null_pk += 1
@@ -155,6 +184,6 @@ def compare_table(
 
     if progress is not None:
         progress(S.count + D.count)
-    res.src_rows = S.count
-    res.dst_rows = D.count
+    res.src_rows = base_src + S.count
+    res.dst_rows = base_dst + D.count
     return res

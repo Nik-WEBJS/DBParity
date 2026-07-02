@@ -19,8 +19,10 @@
   потоковая детализация только расходящихся бакетов; `strategy: auto|stream|hash`.
   Типы вне hash-набора (float/datetime/bytes) → авто-fallback в stream.
   Несовершенная канонизация деградирует скорость, но не корректность
-- [ ] Checkpoint/resume: продолжение сверки после обрыва с последнего PK
-- [ ] Retry на сетевые ошибки, настраиваемые таймауты
+- [x] Checkpoint/resume: атомарный JSON-стейт (fingerprint конфига,
+  watermark по PK, партиал-слот на таблицу), `--resume` в CLI
+- [x] Retry на сетевые ошибки: `retry_attempts`/`retry_backoff_s`,
+  свежая пара соединений на попытку, продолжение с последнего watermark
 - [ ] Бенчмарк-матрица в CI (регрессия производительности)
 
 ## v0.4 — Oracle/MSSQL hardening

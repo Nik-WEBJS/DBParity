@@ -108,8 +108,13 @@ class SQLiteAdapter(Adapter):
         where, params = "", ()
         if pk_range is not None:
             col, lo, hi = pk_range
-            where = f" WHERE {self._quote(col)} >= ? AND {self._quote(col)} <= ?"
-            params = (lo, hi)
+            if hi is None:      # открытый диапазон — для resume с watermark
+                where = f" WHERE {self._quote(col)} >= ?"
+                params = (lo,)
+            else:
+                where = (f" WHERE {self._quote(col)} >= ? "
+                         f"AND {self._quote(col)} <= ?")
+                params = (lo, hi)
         cur = self.conn.cursor()
         cur.execute(f"SELECT {cols_sql} FROM {self._quote(table)}{where} "
                     f"ORDER BY {order_sql}", params)

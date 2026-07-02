@@ -81,6 +81,8 @@ def main(argv=None) -> int:
     pc.add_argument("--json", help="переопределить путь JSON-отчёта")
     pc.add_argument("--workers", type=int,
                     help="сверять N таблиц параллельно (соединение на поток)")
+    pc.add_argument("--resume", action="store_true",
+                    help="продолжить прерванную сверку с чекпоинта")
 
     pd = sub.add_parser("demo", help="Демо на встроенных данных с расхождениями")
     pd.add_argument("--outdir", default="demo_out", help="каталог для демо-файлов")
@@ -119,7 +121,8 @@ def main(argv=None) -> int:
                 progress_ui.update(task_ids[table], completed=n)
 
         with progress_ui:
-            run = engine.run(cfg, on_progress=on_progress)
+            run = engine.run(cfg, on_progress=on_progress,
+                             resume=getattr(args, "resume", False))
     except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Ошибка:[/bold red] {e}")
         return 2

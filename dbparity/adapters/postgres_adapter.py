@@ -97,9 +97,13 @@ class PostgresAdapter(Adapter):
         params = ()
         if pk_range is not None:
             col, lo, hi = pk_range
-            where = _sql.SQL(" WHERE {c} >= %s AND {c} <= %s").format(
-                c=_sql.Identifier(col))
-            params = (lo, hi)
+            if hi is None:      # открытый диапазон — для resume с watermark
+                where = _sql.SQL(" WHERE {c} >= %s").format(c=_sql.Identifier(col))
+                params = (lo,)
+            else:
+                where = _sql.SQL(" WHERE {c} >= %s AND {c} <= %s").format(
+                    c=_sql.Identifier(col))
+                params = (lo, hi)
         q = _sql.SQL("SELECT {cols} FROM {tbl}{where} ORDER BY {order}").format(
             cols=_sql.SQL(", ").join(_sql.Identifier(c) for c in columns),
             tbl=_sql.Identifier(self.schema, table),

@@ -88,8 +88,12 @@ class OracleAdapter(Adapter):
         where, params = "", {}
         if pk_range is not None:
             col, lo, hi = pk_range
-            where = f" WHERE {q(col)} >= :lo AND {q(col)} <= :hi"
-            params = {"lo": lo, "hi": hi}
+            if hi is None:      # открытый диапазон — для resume с watermark
+                where = f" WHERE {q(col)} >= :lo"
+                params = {"lo": lo}
+            else:
+                where = f" WHERE {q(col)} >= :lo AND {q(col)} <= :hi"
+                params = {"lo": lo, "hi": hi}
         cur = self.conn.cursor()
         cur.arraysize = batch
         cur.execute(

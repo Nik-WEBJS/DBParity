@@ -41,6 +41,10 @@ class Config:
     strategy: str = "auto"              # auto | stream | hash
     hash_leaf_rows: int = 20000         # шаг бакета по PK (≈ строк в сегменте
                                         # при плотном ключе)
+    checkpoint: Optional[str] = None    # путь к файлу чекпоинта (вкл. resume)
+    checkpoint_every_rows: int = 500000
+    retry_attempts: int = 1             # 1 = без ретраев
+    retry_backoff_s: float = 2.0
     report: ReportConfig = field(default_factory=ReportConfig)
 
     def summary(self) -> dict:
@@ -60,6 +64,8 @@ class Config:
             "mask_values": self.mask_values,
             "workers": self.workers,
             "strategy": self.strategy,
+            "retry_attempts": self.retry_attempts,
+            "checkpoint": bool(self.checkpoint),
         }
 
 
@@ -112,6 +118,11 @@ def config_from_dict(data: dict) -> Config:
         workers=max(1, int(data.get("workers", 1))),
         strategy=_strategy(data.get("strategy", "auto")),
         hash_leaf_rows=max(1, int(data.get("hash_leaf_rows", 20000))),
+        checkpoint=(str(data["checkpoint"]) if data.get("checkpoint") else None),
+        checkpoint_every_rows=max(1000, int(data.get("checkpoint_every_rows",
+                                                     500000))),
+        retry_attempts=max(1, int(data.get("retry_attempts", 1))),
+        retry_backoff_s=max(0.0, float(data.get("retry_backoff_s", 2.0))),
         report=ReportConfig(html=report.get("html"), json=report.get("json")),
     )
 

@@ -55,6 +55,7 @@ $ echo $?
 - 📄 **Client-ready reports** — a single self-contained HTML file (dark theme, per-column drill-down, value masking for sensitive data) + machine-readable JSON
 - 🤖 **CI/CD-friendly** — exit codes `0/1/2`, make the comparison a mandatory gate before switching traffic
 - 🧵 **Parallel tables & live progress** — `workers: N`, connection per thread
+- 🔁 **Survives network drops** — automatic retries with backoff plus checkpoint/resume: a multi-hour run continues from the last PK watermark (`--resume`), completed tables are never re-compared
 
 ## 🪤 What it catches (and what it doesn't flag)
 
@@ -130,6 +131,11 @@ strategy: auto                       # auto | stream | hash
 hash_leaf_rows: 20000                # PK-bucket width for hash mode
 workers: 4                           # compare N tables in parallel
 mask_values: false                   # true → hide values in the report
+
+checkpoint: state.json               # enable resume after interruption
+checkpoint_every_rows: 500000
+retry_attempts: 3                    # fresh connections per attempt
+retry_backoff_s: 2.0
 
 report:
   html: report.html
