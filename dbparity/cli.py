@@ -171,6 +171,66 @@ def _cmd_history(console: Console, config_path: str, html) -> int:
     return 0
 
 
+def _cmd_watch(console: Console, config_path: str, interval: float,
+               stable: int, max_runs: int) -> int:
+    """Режим наблюдения: инкрементальные прогоны до устойчиво нулевого дрейфа.
+
+    Сценарий ночи переключения: dual-write включён, watch гоняет сверку
+    каждые N секунд; когда дрейф нулевой `stable` раз подряд — зелёный
+    сигнал и код выхода 0.
+    """
+    import time as _time
+    from datetime import datetime as _dt
+
+    try:
+        cfg = load_config(config_path)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[bold red]Ошибка:[/bold red] {e}")
+        return 2
+    if not cfg.incremental:
+        console.print("[yellow]В конфиге нет карты incremental — "
+                      "режиму наблюдения нечего отслеживать.[/yellow]")
+        return 2
+
+    streak = 0
+    for i in range(1, max_runs + 1):
+        try:
+            run = engine.run(cfg)
+        except Exception as e:  # noqa: BLE001
+            console.print(f"[bold red]Ошибка прогона {i}:[/bold red] {e}")
+            return 2
+        tracked = [t for t in run.tables if t.table in cfg.incremental]
+        drift = sum(t.total_diffs for t in tracked)
+        errors = [t.table for t in tracked if t.error]
+        ts = _dt.now().strftime("%H:%M:%S")
+        if errors:
+            streak = 0
+            console.print(f"[yellow]{ts} · прогон {i}: ошибки таблиц "
+                          f"({', '.join(errors)}) — серия сброшена[/yellow]")
+        elif drift == 0:
+            streak += 1
+            console.print(f"[green]{ts} · прогон {i}: дрейф 0 "
+                          f"({streak}/{stable} подряд)[/green]")
+        else:
+            streak = 0
+            per = ", ".join(f"{t.table}: {t.total_diffs}"
+                            for t in tracked if t.total_diffs)
+            console.print(f"[red]{ts} · прогон {i}: дрейф {drift} ({per})[/red]")
+        if streak >= stable:
+            console.print(Panel(
+                f"[bold green]ДРЕЙФ НУЛЕВОЙ {stable} раз(а) подряд[/bold green] "
+                f"— можно переключать трафик",
+                border_style="green"))
+            return 0
+        if i < max_runs:
+            _time.sleep(interval)
+    console.print(Panel(
+        f"[bold red]Лимит прогонов ({max_runs}) исчерпан[/bold red] — "
+        f"дрейф так и не стабилизировался на нуле",
+        border_style="red"))
+    return 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="dbparity",
@@ -210,6 +270,17 @@ def main(argv=None) -> int:
     ps.add_argument("--workdir", default="dbparity_console",
                     help="каталог для отчётов консоли")
 
+    pw = sub.add_parser("watch",
+                        help="Наблюдение: инкрементальные прогоны до "
+                             "устойчиво нулевого дрейфа")
+    pw.add_argument("-c", "--config", required=True, help="путь к config.yaml")
+    pw.add_argument("--interval", type=float, default=300,
+                    help="пауза между прогонами, сек (по умолчанию 300)")
+    pw.add_argument("--stable", type=int, default=2,
+                    help="сколько нулевых прогонов подряд считать успехом")
+    pw.add_argument("--max-runs", type=int, default=100,
+                    help="максимум прогонов до выхода с кодом 1")
+
     args = parser.parse_args(argv)
     console = Console()
 
@@ -217,6 +288,9 @@ def main(argv=None) -> int:
         return _cmd_validate(console, args.config)
     if args.cmd == "history":
         return _cmd_history(console, args.config, args.html)
+    if args.cmd == "watch":
+        return _cmd_watch(console, args.config, args.interval,
+                          max(1, args.stable), max(1, args.max_runs))
     if args.cmd == "serve":
         from .web import create_server
         srv = create_server(args.host, args.port, args.workdir)

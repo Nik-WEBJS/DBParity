@@ -110,6 +110,7 @@ open demo_out/dbparity_report.html    # see what your client will see
 dbparity validate -c config.yaml      # sanity-check config (no DB needed)
 dbparity compare -c config.yaml       # the real thing
 dbparity history -c config.yaml --html timeline.html   # dual-write drift trend
+dbparity watch -c config.yaml --stable 3               # cutover night mode
 dbparity serve                        # web console at http://127.0.0.1:8765
 ```
 
