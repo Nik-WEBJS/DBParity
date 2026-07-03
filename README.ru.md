@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🛡️ DBParity
+<img src="docs/logo.svg" width="96" alt="DBParity — две идентичные двоичные колонки, равенство"/>
+
+# DBParity
 
 ### Докажите, что при миграции БД не потерялась и не исказилась ни одна строка
 

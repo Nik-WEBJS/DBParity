@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🛡️ DBParity
+<img src="docs/logo.svg" width="96" alt="DBParity — two identical binary columns, equal"/>
+
+# DBParity
 
 ### Prove your database migration didn't lose or corrupt a single row
 

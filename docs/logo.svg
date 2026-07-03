@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- DBParity: две идентичные колонки двоичного кода (источник и приёмник)
+       и знак равенства — «данные побитово совпали». Мастер-вектор;
+       растр генерируется scripts/make_icon.py тем же дизайном. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a5db8"/>
+      <stop offset="1" stop-color="#12386e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="113" fill="url(#bg)"/>
+  <g fill="#ffffff" fill-opacity="0.9" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace"
+     font-weight="bold" font-size="59" text-anchor="middle">
+    <g>
+      <text x="138" y="103">1</text><text x="138" y="161">0</text>
+      <text x="138" y="219">1</text><text x="138" y="277">1</text>
+      <text x="138" y="335">0</text><text x="138" y="393">1</text>
+      <text x="138" y="451">0</text>
+    </g>
+    <g>
+      <text x="374" y="103">1</text><text x="374" y="161">0</text>
+      <text x="374" y="219">1</text><text x="374" y="277">1</text>
+      <text x="374" y="335">0</text><text x="374" y="393">1</text>
+      <text x="374" y="451">0</text>
+    </g>
+  </g>
+  <g fill="#ffffff">
+    <rect x="205" y="219" width="102" height="28" rx="14"/>
+    <rect x="205" y="280" width="102" height="28" rx="14"/>
+  </g>
+</svg>
