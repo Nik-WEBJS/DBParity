@@ -203,6 +203,13 @@ def main(argv=None) -> int:
     ph.add_argument("-c", "--config", required=True, help="путь к config.yaml")
     ph.add_argument("--html", help="сохранить HTML-таймлайн по указанному пути")
 
+    ps = sub.add_parser("serve",
+                        help="Локальная веб-консоль (браузер вместо терминала)")
+    ps.add_argument("--host", default="127.0.0.1")
+    ps.add_argument("--port", type=int, default=8765)
+    ps.add_argument("--workdir", default="dbparity_console",
+                    help="каталог для отчётов консоли")
+
     args = parser.parse_args(argv)
     console = Console()
 
@@ -210,6 +217,16 @@ def main(argv=None) -> int:
         return _cmd_validate(console, args.config)
     if args.cmd == "history":
         return _cmd_history(console, args.config, args.html)
+    if args.cmd == "serve":
+        from .web import create_server
+        srv = create_server(args.host, args.port, args.workdir)
+        console.print(f"Веб-консоль: [bold]http://{args.host}:{srv.port}/[/bold] "
+                      f"(Ctrl+C — остановка)")
+        try:
+            srv.serve_forever()
+        except KeyboardInterrupt:
+            console.print("\n[dim]Остановлено[/dim]")
+        return 0
 
     try:
         if args.cmd == "demo":
