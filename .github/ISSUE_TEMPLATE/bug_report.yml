@@ -1,0 +1,76 @@
+name: Bug report
+description: Wrong counters, a crash, a false verdict — anything DBParity got wrong.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. **Feel free to write in English or Russian.**
+
+        If this is feedback from a run against a *real* Oracle/MSSQL migration, the
+        [field report template](https://github.com/Nik-WEBJS/DBParity/issues/new?template=oracle_mssql_field_report.yml)
+        asks better questions for that case.
+  - type: input
+    id: dbparity-version
+    attributes:
+      label: DBParity version
+      description: "`dbparity --version` or `pip show dbparity`"
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: input
+    id: source-engine
+    attributes:
+      label: Source engine and version
+      placeholder: "Oracle 19.3 / SQL Server 2019 / SQLite 3.45 / PostgreSQL 14"
+    validations:
+      required: true
+  - type: input
+    id: target-engine
+    attributes:
+      label: Target engine and version
+      placeholder: "PostgreSQL 16.2"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: config.yaml
+      description: "The config you ran with. **Remove passwords, DSN credentials and internal hostnames before pasting!**"
+      render: yaml
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Exact command
+      placeholder: "dbparity compare -c config.yaml --resume"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Wrong counters, false EQUIVALENT / NOT EQUIVALENT, crash, hang, broken report…
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output / traceback
+      description: Paste relevant CLI output or the full traceback.
+      render: text
+  - type: checkboxes
+    id: demo
+    attributes:
+      label: Reproducibility on the built-in demo
+      description: "`dbparity demo --outdir demo_out` needs no databases at all."
+      options:
+        - label: I tried `dbparity demo` and the problem reproduces there too

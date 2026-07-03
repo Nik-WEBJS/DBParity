@@ -111,6 +111,66 @@ def _cmd_validate(console: Console, path: str) -> int:
     return 0
 
 
+def _cmd_history(console: Console, config_path: str, html) -> int:
+    """Таймлайн дрейфа по истории инкрементальных прогонов."""
+    from .core.incremental import (IncrementalState, default_state_path,
+                                   state_fingerprint)
+    from .report.render import write_timeline_html
+    try:
+        cfg = load_config(config_path)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[bold red]Ошибка:[/bold red] {e}")
+        return 2
+    if not cfg.incremental:
+        console.print("[yellow]В конфиге нет карты incremental — "
+                      "история дрейфа не ведётся.[/yellow]")
+        return 2
+    ifp = state_fingerprint(cfg)
+    st = IncrementalState.load_or_create(default_state_path(ifp), ifp)
+    hist = st.history
+    if not hist:
+        console.print("[yellow]История пуста: стейт-файл не найден или "
+                      "с этим конфигом ещё не было прогонов.[/yellow]")
+        return 2
+
+    tables = sorted({n for h in hist for n in (h.get("tables") or {})})
+
+    def entry_total(h: dict) -> int:
+        return sum(int((v or {}).get("total_diffs", 0) or 0)
+                   for v in (h.get("tables") or {}).values())
+
+    rt = RichTable(title=f"Дрейф по прогонам (всего {len(hist)}, последние 15)")
+    for col in ["Время", "Режим", *tables, "Σ дрейф"]:
+        rt.add_column(col, justify="right" if col not in ("Время", "Режим") else "left")
+    for h in hist[-15:]:
+        total = entry_total(h)
+        style = "green" if total == 0 else "red"
+        rt.add_row(
+            str(h.get("ts", ""))[:19],
+            "full" if h.get("full") else "incr",
+            *[str(((h.get("tables") or {}).get(n) or {}).get("total_diffs", "—"))
+              for n in tables],
+            f"[{style}]{total}[/{style}]",
+        )
+    console.print(rt)
+
+    last_total = entry_total(hist[-1])
+    if last_total == 0:
+        console.print(Panel(
+            "[bold green]ДРЕЙФ НУЛЕВОЙ[/bold green] — по последнему прогону "
+            "расхождений среди изменённых строк нет",
+            border_style="green"))
+    else:
+        console.print(Panel(
+            f"[bold red]Дрейф: {last_total}[/bold red] по последнему прогону",
+            border_style="red"))
+    if html:
+        p = write_timeline_html(hist, cfg.source.label or cfg.source.type,
+                                cfg.target.label or cfg.target.type, html)
+        console.print(f"HTML-таймлайн: [bold]{p.resolve()}[/bold]")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="dbparity",
@@ -138,11 +198,18 @@ def main(argv=None) -> int:
                         help="Проверка конфига без подключения к БД")
     pv.add_argument("-c", "--config", required=True, help="путь к config.yaml")
 
+    ph = sub.add_parser("history",
+                        help="Таймлайн дрейфа по истории инкрементальных прогонов")
+    ph.add_argument("-c", "--config", required=True, help="путь к config.yaml")
+    ph.add_argument("--html", help="сохранить HTML-таймлайн по указанному пути")
+
     args = parser.parse_args(argv)
     console = Console()
 
     if args.cmd == "validate":
         return _cmd_validate(console, args.config)
+    if args.cmd == "history":
+        return _cmd_history(console, args.config, args.html)
 
     try:
         if args.cmd == "demo":

@@ -1,0 +1,90 @@
+name: "Field report: real migration run"
+description: You ran DBParity against a real Oracle/MSSQL → PostgreSQL migration. The most valuable contribution right now — success stories and failures alike.
+title: "[field report] "
+labels: ["field-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you — real-world runs are exactly what DBParity needs before v1.0
+        ([roadmap](https://github.com/Nik-WEBJS/DBParity/blob/main/ROADMAP.md)).
+        Partial answers are fine, and **"everything matched" is just as valuable as a failure story**.
+  - type: dropdown
+    id: source-engine
+    attributes:
+      label: Source engine
+      options:
+        - Oracle
+        - MSSQL / SQL Server
+        - Other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: source-version
+    attributes:
+      label: Source version, edition, character set
+      placeholder: "Oracle 19c EE, AL32UTF8 / SQL Server 2019 Standard, Cyrillic_General_CI_AS"
+    validations:
+      required: true
+  - type: input
+    id: target-version
+    attributes:
+      label: Target PostgreSQL version
+      placeholder: "PostgreSQL 15.6 / Postgres Pro Std 15"
+    validations:
+      required: true
+  - type: input
+    id: scale
+    attributes:
+      label: Scale of the run
+      description: Rough numbers are fine — tables compared, total rows, largest table.
+      placeholder: "120 tables, ~800M rows total, largest table 200M rows"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Comparison mode (strategy)
+      options:
+        - auto
+        - stream
+        - hash
+        - incremental
+        - mixed / several runs
+    validations:
+      required: true
+  - type: textarea
+    id: worked
+    attributes:
+      label: What worked
+      description: Tables that compared cleanly, features that behaved as advertised (hash mode, checkpoint/resume, retries, report…).
+    validations:
+      required: true
+  - type: textarea
+    id: broke
+    attributes:
+      label: What broke or surprised you
+      description: Errors, crashes, tables unexpectedly falling back to stream mode, suspicious statuses, unusable output… "Nothing" is a great answer.
+    validations:
+      required: true
+  - type: dropdown
+    id: counters
+    attributes:
+      label: Did DBParity's counters match your manual verification?
+      description: For example COUNT(*) spot checks, checksums/sums per column, or hand-sampled rows.
+      options:
+        - "Yes — matched"
+        - "No — diverged (please describe above)"
+        - "Didn't verify manually"
+    validations:
+      required: true
+  - type: textarea
+    id: anomalies
+    attributes:
+      label: Type / encoding anomalies
+      description: NUMBER precision, Oracle DATE carrying time, NCHAR/NVARCHAR2, AL32UTF8 vs UTF-8 edge cases, datetimeoffset, collation/sort-order effects, BLOB handling…
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Performance figures, network conditions, config that needed tuning, report feedback.

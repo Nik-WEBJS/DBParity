@@ -33,6 +33,7 @@ from pathlib import Path
 from .checkpoint import _wm_decode, _wm_encode, config_fingerprint
 
 STATE_VERSION = 1       # версия формата ИНКРЕМЕНТАЛЬНОГО стейта (не чекпоинта)
+HISTORY_LIMIT = 500     # хранимых записей истории прогонов (старые вытесняются)
 
 
 def state_fingerprint(config) -> str:
@@ -59,6 +60,11 @@ class IncrementalState:
     Конструктор создаёт пустой стейт; чтение с диска — через
     classmethod load_or_create (битый или чужой по отпечатку файл
     молча игнорируется — начинаем с чистого стейта).
+
+    Помимо watermark'ов файл хранит "history" — хронологический журнал
+    итогов прогонов (record_run): по нему строится отчёт-таймлайн дрейфа
+    (`dbparity history`). Ключ появился позже формата v1 и опционален:
+    старые файлы без него загружаются как стейт с пустой историей.
     """
 
     def __init__(self, path, fingerprint: str):
@@ -66,6 +72,7 @@ class IncrementalState:
         self.fp = fingerprint
         self._lock = threading.Lock()
         self._tables: dict = {}     # таблица → закодированный watermark
+        self._history: list = []    # журнал прогонов (записи record_run)
 
     @classmethod
     def load_or_create(cls, path, fingerprint: str) -> "IncrementalState":
@@ -78,6 +85,11 @@ class IncrementalState:
                         and data.get("fingerprint") == fingerprint
                         and isinstance(data.get("tables"), dict)):
                     st._tables = dict(data["tables"])
+                    # старые файлы (до появления истории) — без "history";
+                    # это не ошибка формата, просто пустой журнал
+                    hist = data.get("history")
+                    if isinstance(hist, list):
+                        st._history = list(hist)
             except (OSError, json.JSONDecodeError):
                 pass    # битый/недоступный файл — начинаем заново
         return st
@@ -94,6 +106,15 @@ class IncrementalState:
         except (KeyError, TypeError, ValueError):
             return None     # рукой правленный/битый элемент — как отсутствие
 
+    @property
+    def history(self) -> list:
+        """История прогонов (копия; хронологический порядок, свежие в конце).
+
+        Элемент — summary из record_run: {"ts", "full", "equivalent",
+        "tables": {таблица: счётчики дрейфа}}.
+        """
+        return list(self._history)
+
     # ---- запись ---------------------------------------------------------
 
     def update(self, table: str, wm) -> None:
@@ -109,6 +130,23 @@ class IncrementalState:
             self._tables[table] = enc
             self._save_locked()
 
+    def record_run(self, summary: dict) -> None:
+        """Дописывает итог прогона в историю и сразу сохраняет файл.
+
+        summary формирует движок в конце run():
+        {"ts": iso-UTC, "full": bool, "equivalent": bool,
+         "tables": {таблица: {"total_diffs", "mismatched",
+                              "missing_in_target", "extra_in_target",
+                              "src_rows"}}}.
+        Журнал ограничен последними HISTORY_LIMIT записями — стейт-файл
+        не разрастается при сверке по расписанию (cron во время dual-write).
+        """
+        with self._lock:
+            self._history.append(summary)
+            if len(self._history) > HISTORY_LIMIT:
+                self._history = self._history[-HISTORY_LIMIT:]
+            self._save_locked()
+
     def save(self) -> None:
         """Принудительная запись стейта (потокобезопасно)."""
         with self._lock:
@@ -117,7 +155,7 @@ class IncrementalState:
     def _save_locked(self) -> None:
         """Атомарная запись: tmp-файл + os.replace. Вызывать под локом."""
         payload = {"version": STATE_VERSION, "fingerprint": self.fp,
-                   "tables": self._tables}
+                   "tables": self._tables, "history": self._history}
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False),
                        encoding="utf-8")

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap — is it already planned?
+    url: https://github.com/Nik-WEBJS/DBParity/blob/main/ROADMAP.md
+    about: Oracle/MSSQL hardening, parallel-run mode and the v1.0 criteria are laid out here — check before filing a feature request.
+  - name: Live demo report
+    url: https://nik-webjs.github.io/DBParity/
+    about: A sample HTML report with planted diffs — see what DBParity output looks like before describing a report problem.

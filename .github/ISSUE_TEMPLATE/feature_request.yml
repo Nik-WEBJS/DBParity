@@ -1,0 +1,30 @@
+name: Feature request
+description: A missing normalization rule, adapter capability, report feature, CLI ergonomics…
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please skim the [roadmap](https://github.com/Nik-WEBJS/DBParity/blob/main/ROADMAP.md)
+        first — your idea may already be planned (or deliberately deferred past v1.0).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / pain
+      description: What migration scenario hurts today? What does DBParity get wrong, flag falsely, or not do at all?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: A config key, a new rule, a CLI flag, a report change — a rough sketch is enough. Alternatives you considered are welcome too.
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to open a PR for this (see CONTRIBUTING.md)

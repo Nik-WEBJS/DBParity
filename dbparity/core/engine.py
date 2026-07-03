@@ -287,6 +287,25 @@ def run(config: Config, on_progress=None, resume: bool = False,
     if ckpt is not None:
         ckpt.finish(delete=all(t.error is None for t in results))
 
+    if incr is not None:
+        # История прогонов (v0.5): точка тренда дрейфа для отчёта-таймлайна.
+        # Пишем только таблицы из карты incremental — прочие не относятся
+        # к сценарию dual-write и лишь зашумили бы график.
+        tracked = [t for t in results if t.table in config.incremental]
+        incr.record_run({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "full": full,
+            "equivalent": all(t.error is None and t.total_diffs == 0
+                              for t in tracked),
+            "tables": {t.table: {
+                "total_diffs": t.total_diffs,
+                "mismatched": t.mismatched,
+                "missing_in_target": t.missing_in_target,
+                "extra_in_target": t.extra_in_target,
+                "src_rows": t.src_rows,
+            } for t in tracked},
+        })
+
     return RunResult(
         source_label=src_label,
         target_label=dst_label,
