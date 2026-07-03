@@ -133,12 +133,36 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
     cur.executemany("INSERT INTO hnums VALUES (?,?,?,?)", dst_rows)
     ms.close()
 
+    # Санити-чек ДО прогона: DDL обязан быть виден из СВЕЖЕГО соединения
+    # (CI ловил 42S02 'Invalid object name' именно на новой сессии job-фазы).
+    # Заодно диагностируем контекст: DB_NAME() назовёт базу, если пул/DSN
+    # завёл сессию не туда.
+    import time as _time
+    db = cnt = err = None
+    for _ in range(20):
+        chk = pyodbc.connect(DSN, autocommit=True)
+        ccur = chk.cursor()
+        db = ccur.execute("SELECT DB_NAME()").fetchone()[0]
+        try:
+            cnt = ccur.execute("SELECT COUNT(*) FROM dbo.hnums").fetchone()[0]
+        except pyodbc.Error as e:
+            err = str(e)
+            chk.close()
+            _time.sleep(0.5)
+            continue
+        chk.close()
+        break
+    assert cnt == n, (f"seed не виден из нового соединения: DB_NAME()={db!r}, "
+                      f"count={cnt!r}, последняя ошибка: {err}")
+
     cfg = Config(
         source=EndpointConfig("sqlite", "src", {"path": str(src_p)}),
         target=EndpointConfig("mssql", "SQL Server LIVE",
                               options={"dsn": DSN}),
         strategy="hash",
         hash_leaf_rows=256,
+        retry_attempts=2,        # страховка от транзиентов первой сессии
+        retry_backoff_s=0.5,
     )
     run = engine.run(cfg)
     t = run.tables[0]

@@ -14,6 +14,11 @@ from .base import Adapter, ColumnSchema, TableSchema
 
 try:
     import pyodbc
+    # ODBC-пул переиспользует сессии (и их контекст: текущая БД, SET-опции)
+    # между "новыми" соединениями с одинаковой строкой. Для верификатора
+    # такая скрытая общность состояния недопустима — каждый адаптер обязан
+    # получать честную свежую сессию.
+    pyodbc.pooling = False
 except ImportError:  # pragma: no cover
     pyodbc = None
 
