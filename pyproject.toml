@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dbparity"
-version = "0.6.0"
+version = "0.7.0"
 description = "Prove data equivalence after database migrations: streaming row-by-row comparison with migration-aware normalization and client-ready HTML reports"
 readme = "README.md"
 license = { text = "MIT" }

@@ -58,6 +58,8 @@ $ echo $?
 - 🧵 **Parallel tables & live progress** — `workers: N`, connection per thread
 - 🔁 **Survives network drops** — automatic retries with backoff plus checkpoint/resume: a multi-hour run continues from the last PK watermark (`--resume`), completed tables are never re-compared
 - ✅ **Config validation** — `dbparity validate` catches typos and missing fields with suggestions, before any DB connection
+- 📉 **Dual-write drift timeline** — incremental runs are journaled; `dbparity history` renders the drift trend down to zero, so you know when it's safe to cut over
+- 🖥️ **Local web console** — `dbparity serve`: run comparisons from the browser with live progress and report links (stdlib-only, binds to localhost)
 
 ## 🪤 What it catches (and what it doesn't flag)
 
@@ -107,6 +109,8 @@ open demo_out/dbparity_report.html    # see what your client will see
 
 dbparity validate -c config.yaml      # sanity-check config (no DB needed)
 dbparity compare -c config.yaml       # the real thing
+dbparity history -c config.yaml --html timeline.html   # dual-write drift trend
+dbparity serve                        # web console at http://127.0.0.1:8765
 ```
 
 ### config.yaml

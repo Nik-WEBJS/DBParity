@@ -12,4 +12,9 @@ demo_out/
 *.db
 *.db-journal
 
+# рабочие файлы прогонов
+.dbparity_ckpt_*.json
+.dbparity_incr_*.json
+dbparity_console/
+
 .DS_Store
