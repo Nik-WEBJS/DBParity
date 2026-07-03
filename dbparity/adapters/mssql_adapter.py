@@ -75,10 +75,12 @@ class MSSQLAdapter(Adapter):
         dsn = o.get("dsn")
         if not dsn:  # pragma: no cover — сборка строки покрыта юнит-логикой ниже
             dsn = self._build_dsn(o)
-        # autocommit по умолчанию False: сверка read-only, поведение
-        # единообразно с остальными адаптерами; при необходимости
-        # переопределяется опцией autocommit: true.
-        self.conn = pyodbc.connect(dsn, autocommit=bool(o.get("autocommit", False)))
+        # autocommit=True: верификатор только читает, транзакции ему не
+        # нужны, а autocommit=False на SQL Server открывает неявную
+        # транзакцию, которая держит shared-блокировки на всё время стрима
+        # и (по наблюдениям CI) даёт аномалии видимости объектов на свежих
+        # сессиях. Переопределяется опцией autocommit: false.
+        self.conn = pyodbc.connect(dsn, autocommit=bool(o.get("autocommit", True)))
         self.conn.add_output_converter(_SQL_SS_TIMESTAMPOFFSET,
                                        _decode_datetimeoffset)
         self.schema = o.get("schema", "dbo")

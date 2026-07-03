@@ -86,7 +86,11 @@ def test_sqlite_source_to_live_mssql(mssql_target, tmp_path):
         assert getattr(by["customers"], key) == exp, f"customers.{key}"
     for key, exp in seed.EXPECTED["orders"].items():
         assert getattr(by["orders"], key) == exp, f"orders.{key}"
+    # у error-таблицы total_diffs тоже 0 — проверяем error и src_rows,
+    # чтобы hash-путь (products в auto-стратегии) не прятал падение
+    assert by["products"].error is None, by["products"].error
     assert by["products"].total_diffs == 0
+    assert by["products"].src_rows == 300
 
     assert run.tables_only_in_source == ["legacy_log"]
     assert run.tables_only_in_target == ["audit_new"]
@@ -133,27 +137,32 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
     cur.executemany("INSERT INTO hnums VALUES (?,?,?,?)", dst_rows)
     ms.close()
 
-    # Санити-чек ДО прогона: DDL обязан быть виден из СВЕЖЕГО соединения
-    # (CI ловил 42S02 'Invalid object name' именно на новой сессии job-фазы).
-    # Заодно диагностируем контекст: DB_NAME() назовёт базу, если пул/DSN
-    # завёл сессию не туда.
+    # Санити-чек ДО прогона: таблица истинности видимости DDL по всем
+    # комбинациям (autocommit × стиль имени) — CI ловил 42S02 только на
+    # сессиях адаптера, и матрица однозначно называет виновную комбинацию.
     import time as _time
-    db = cnt = err = None
+    combos, db = {}, None
     for _ in range(20):
-        chk = pyodbc.connect(DSN, autocommit=True)
-        ccur = chk.cursor()
-        db = ccur.execute("SELECT DB_NAME()").fetchone()[0]
-        try:
-            cnt = ccur.execute("SELECT COUNT(*) FROM dbo.hnums").fetchone()[0]
-        except pyodbc.Error as e:
-            err = str(e)
+        results = {}
+        for ac in (True, False):
+            chk = pyodbc.connect(DSN, autocommit=ac)
+            ccur = chk.cursor()
+            db = ccur.execute("SELECT DB_NAME()").fetchone()[0]
+            for label, sql in (
+                    ("plain", "SELECT COUNT(*) FROM dbo.hnums"),
+                    ("bracket", "SELECT COUNT(*) FROM [dbo].[hnums]")):
+                try:
+                    results[f"ac={ac}/{label}"] = (
+                        ccur.execute(sql).fetchone()[0])
+                except pyodbc.Error as e:
+                    results[f"ac={ac}/{label}"] = f"ERR {e.args[0]}"
             chk.close()
-            _time.sleep(0.5)
-            continue
-        chk.close()
-        break
-    assert cnt == n, (f"seed не виден из нового соединения: DB_NAME()={db!r}, "
-                      f"count={cnt!r}, последняя ошибка: {err}")
+        combos = results
+        if all(v == n for v in combos.values()):
+            break
+        _time.sleep(0.5)
+    assert all(v == n for v in combos.values()), (
+        f"видимость seed по комбинациям (DB_NAME()={db!r}): {combos}")
 
     cfg = Config(
         source=EndpointConfig("sqlite", "src", {"path": str(src_p)}),
