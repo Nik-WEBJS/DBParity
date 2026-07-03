@@ -24,6 +24,8 @@ from ..core import engine
 from ..report.render import write_html, write_json
 
 _RUN_URL = re.compile(r"^/runs/(\d+)/report\.(html|json)$")
+_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+_MAX_BODY = 1_000_000       # потолок тела запроса (DoS-защита)
 
 
 class ConsoleServer(ThreadingHTTPServer):
@@ -31,7 +33,14 @@ class ConsoleServer(ThreadingHTTPServer):
 
     daemon_threads = True
 
-    def __init__(self, host: str, port: int, workdir):
+    def __init__(self, host: str, port: int, workdir,
+                 allow_remote: bool = False):
+        if host not in _LOOPBACK and not allow_remote:
+            raise ValueError(
+                f"Консоль не имеет аутентификации: бинд на {host!r} позволит "
+                "любому в сети запускать сверки с произвольными конфигами "
+                "(чтение локальных файлов, исходящие подключения). Оставьте "
+                "127.0.0.1 либо явно подтвердите риск флагом --allow-remote.")
         super().__init__((host, port), _Handler)
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
@@ -157,6 +166,13 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = -1
+        if length < 0 or length > _MAX_BODY:
+            self._json(413, {"error": "тело запроса слишком большое"})
+            self.close_connection = True
+            return
+        try:
             data = json.loads(self.rfile.read(length) or b"{}")
             config_path = str(data.get("config_path", "")).strip()
             if not config_path:
@@ -169,8 +185,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def create_server(host: str = "127.0.0.1", port: int = 8765,
-                  workdir="dbparity_console") -> ConsoleServer:
-    return ConsoleServer(host, port, workdir)
+                  workdir="dbparity_console",
+                  allow_remote: bool = False) -> ConsoleServer:
+    return ConsoleServer(host, port, workdir, allow_remote=allow_remote)
 
 
 # ---------------------------------------------------------------------------

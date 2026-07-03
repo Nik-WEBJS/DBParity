@@ -269,6 +269,9 @@ def main(argv=None) -> int:
     ps.add_argument("--port", type=int, default=8765)
     ps.add_argument("--workdir", default="dbparity_console",
                     help="каталог для отчётов консоли")
+    ps.add_argument("--allow-remote", action="store_true",
+                    help="разрешить бинд не на localhost (консоль БЕЗ "
+                         "аутентификации — осознанный риск)")
 
     pw = sub.add_parser("watch",
                         help="Наблюдение: инкрементальные прогоны до "
@@ -293,7 +296,15 @@ def main(argv=None) -> int:
                           max(1, args.stable), max(1, args.max_runs))
     if args.cmd == "serve":
         from .web import create_server
-        srv = create_server(args.host, args.port, args.workdir)
+        try:
+            srv = create_server(args.host, args.port, args.workdir,
+                                allow_remote=args.allow_remote)
+        except ValueError as e:
+            console.print(f"[bold red]Ошибка:[/bold red] {e}")
+            return 2
+        if args.allow_remote:
+            console.print("[bold yellow]ВНИМАНИЕ:[/bold yellow] консоль "
+                          "доступна из сети и не имеет аутентификации")
         console.print(f"Веб-консоль: [bold]http://{args.host}:{srv.port}/[/bold] "
                       f"(Ctrl+C — остановка)")
         try:

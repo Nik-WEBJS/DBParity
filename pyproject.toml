@@ -32,7 +32,7 @@ classifiers = [
 postgres = ["psycopg[binary]>=3.1"]
 oracle = ["oracledb>=2.0"]
 mssql = ["pyodbc>=5.0"]
-all = ["psycopg[binary]>=3.1", "oracledb>=2.0"]
+all = ["psycopg[binary]>=3.1", "oracledb>=2.0", "pyodbc>=5.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

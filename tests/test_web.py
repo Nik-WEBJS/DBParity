@@ -79,6 +79,31 @@ def test_full_run_and_report(console, tmp_path):
     assert json.loads(rjson)["schema_version"] == 1
 
 
+def test_remote_bind_requires_opt_in(tmp_path):
+    """Бинд не на localhost без явного opt-in запрещён (нет аутентификации)."""
+    with pytest.raises(ValueError):
+        create_server("0.0.0.0", 0, tmp_path / "w")
+    srv = create_server("0.0.0.0", 0, tmp_path / "w2", allow_remote=True)
+    srv.server_close()
+
+
+def test_oversized_body_rejected(console):
+    """Тело больше потолка отклоняется до чтения (DoS-защита)."""
+    import http.client
+    base, srv = console
+    conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
+    try:
+        conn.request("POST", "/api/run", body=b"x" * (2 * 1024 * 1024),
+                     headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        assert resp.status == 413
+    except (ConnectionError, OSError):
+        pass    # сервер оборвал приём гигантского тела — тоже защита
+    finally:
+        conn.close()
+    assert srv.runs_snapshot() == []         # запуск не создан
+
+
 def test_path_traversal_blocked(console):
     base, _ = console
     for url in ("/runs/../../etc/passwd", "/runs/1x/report.html",

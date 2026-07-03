@@ -12,8 +12,11 @@ def main() -> int:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--workdir", default="dbparity_console",
                    help="каталог для отчётов консоли")
+    p.add_argument("--allow-remote", action="store_true",
+                   help="разрешить бинд не на localhost (без аутентификации!)")
     args = p.parse_args()
-    srv = create_server(args.host, args.port, args.workdir)
+    srv = create_server(args.host, args.port, args.workdir,
+                        allow_remote=args.allow_remote)
     print(f"DBParity консоль: http://{args.host}:{srv.port}/  (Ctrl+C — стоп)")
     try:
         srv.serve_forever()

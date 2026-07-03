@@ -27,7 +27,7 @@ gives you a report you can put on the table at project sign-off.
 ```console
 $ dbparity compare -c config.yaml
 
-           DBParity v0.5.0: Oracle PROD  →  PostgreSQL NEW
+           DBParity v0.8.0: Oracle PROD  →  PostgreSQL NEW
 ┏━━━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
 ┃ Table     ┃  Src ┃  Dst ┃ Matched ┃ Diff  ┃ Missing   ┃ Extra  ┃ Dup   ┃ Status  ┃
 ┡━━━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
@@ -42,8 +42,8 @@ $ echo $?
 1
 ```
 
-> **Status: v0.5 alpha.** Core engine (65 tests) and the PostgreSQL adapter
-> are tested against a live PostgreSQL 18, runs survive network drops
+> **Status: v0.8 alpha.** Core engine (98 tests) is exercised against live
+> PostgreSQL and SQL Server in CI, runs survive network drops
 > (checkpoint/resume + retries). The Oracle adapter is written but not yet
 > battle-tested — **testers with real Oracle instances are very welcome!**
 
@@ -176,7 +176,7 @@ understates real gains on PostgreSQL/Oracle where hashing is native C.
 
 ```bash
 pip install -e ".[dev,postgres]"
-pytest tests/ -v                      # 65 tests
+pytest tests/ -v                      # 98 tests
 
 # against a live PostgreSQL:
 docker compose up -d
