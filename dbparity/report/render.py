@@ -1,4 +1,4 @@
-"""Рендеринг результатов: самодостаточный HTML (Tabler + Chart.js) и JSON."""
+"""Result rendering: self-contained HTML (Tabler + Chart.js) and JSON."""
 from __future__ import annotations
 
 import json
@@ -18,16 +18,16 @@ def _fmt_int(n) -> str:
 
 
 def _fmt_ts(ts) -> str:
-    """ISO-строка времени прогона → читаемый вид (для таймлайна)."""
+    """A run-time ISO string → a readable form (for the timeline)."""
     try:
         return (datetime.fromisoformat(str(ts))
                 .strftime("%Y-%m-%d %H:%M:%S UTC"))
     except ValueError:
-        return str(ts)      # не ISO — показываем как есть
+        return str(ts)      # not ISO — show as is
 
 
 def _fmt_ts_short(ts) -> str:
-    """ISO-строка времени → короткая подпись оси X line-chart'а."""
+    """A time ISO string → a short X-axis label for the line chart."""
     try:
         return datetime.fromisoformat(str(ts)).strftime("%d.%m %H:%M")
     except ValueError:
@@ -50,8 +50,8 @@ def _chart_data(run: RunResult) -> dict:
         "tables": [x.table for x in run.tables],
         "diffs": [x.total_diffs for x in run.tables],
         "donut": {
-            "labels": ["Совпало", "Различия значений", "Нет в приёмнике",
-                       "Лишние в приёмнике", "Дубли PK"],
+            "labels": ["Matched", "Value mismatches", "Missing in target",
+                       "Extra in target", "Duplicate PKs"],
             "data": [t["matched"], t["mismatched"], t["missing_in_target"],
                      t["extra_in_target"], t["duplicate_pk"]],
         },
@@ -60,11 +60,11 @@ def _chart_data(run: RunResult) -> dict:
 
 def render_html(run: RunResult) -> str:
     tpl = _env().get_template("report.html.j2")
-    # Версия схемы отчёта дописывается к строке generated: обе переменные
-    # используются только в футере шаблона, так футер получает
-    # "· схема отчёта vN" без правки самого шаблона.
+    # The report schema version is appended to the generated string: both
+    # variables are used only in the template footer, so the footer gets
+    # "· report schema vN" without touching the template itself.
     generated = (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-                 + f" · схема отчёта v{REPORT_SCHEMA_VERSION}")
+                 + f" · report schema v{REPORT_SCHEMA_VERSION}")
     return tpl.render(
         run=run,
         totals=run.totals,
@@ -90,21 +90,22 @@ def write_json(run: RunResult, path: str | Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Таймлайн дрейфа (v0.5): HTML по истории инкрементальных прогонов.
-# История — список записей IncrementalState.record_run (см. core/incremental).
+# Drift timeline (v0.5): HTML from the history of incremental runs.
+# The history is a list of IncrementalState.record_run entries
+# (see core/incremental).
 # ---------------------------------------------------------------------------
 
 def _entry_total(entry: dict) -> int:
-    """Суммарный дрейф записи истории (сумма total_diffs по таблицам)."""
+    """The total drift of a history entry (sum of total_diffs across tables)."""
     return sum(int((v or {}).get("total_diffs", 0) or 0)
                for v in (entry.get("tables") or {}).values())
 
 
 def _timeline_chart(history: list) -> dict:
-    """Данные line-chart'а: ось X — время, серия на таблицу + суммарная.
+    """Line-chart data: the X axis is time, one series per table + the total.
 
-    Таблица, отсутствующая в каком-то прогоне (менялась карта incremental),
-    получает None — Chart.js рисует разрыв (spanGaps соединит точки).
+    A table absent from some run (the incremental map changed) gets
+    None — Chart.js draws a gap (spanGaps connects the points).
     """
     tables = sorted({name for h in history for name in (h.get("tables") or {})})
     return {
@@ -119,19 +120,20 @@ def _timeline_chart(history: list) -> dict:
 
 def render_timeline_html(history: list, source_label: str,
                          target_label: str) -> str:
-    """HTML-таймлайн дрейфа серии инкрементальных прогонов.
+    """An HTML drift timeline for a series of incremental runs.
 
-    Сценарий: во время dual-write сверка гоняется по расписанию, интегратор
-    смотрит тренд total_diffs «до нуля» и решает, пора ли переключаться.
-    Страница самодостаточная, в стиле основного отчёта (Tabler + Chart.js):
-    вердикт по последнему прогону, KPI, line-chart, последние 20 прогонов.
+    Scenario: during dual-write the comparison runs on a schedule, the
+    integrator watches the total_diffs trend "toward zero" and decides
+    whether it is time to cut over. The page is self-contained, in the
+    style of the main report (Tabler + Chart.js): the verdict for the
+    latest run, KPIs, a line chart, the last 20 runs.
     """
     hist = [h for h in (history or []) if isinstance(h, dict)]
     last = hist[-1] if hist else None
     last_total = _entry_total(last) if last else 0
     prev_total = _entry_total(hist[-2]) if len(hist) >= 2 else None
     if prev_total is None:
-        trend = {"arrow": "—", "cls": "secondary", "note": "один прогон"}
+        trend = {"arrow": "—", "cls": "secondary", "note": "single run"}
     elif last_total < prev_total:
         trend = {"arrow": "↓", "cls": "success",
                  "note": f"{prev_total} → {last_total}"}
@@ -139,7 +141,7 @@ def render_timeline_html(history: list, source_label: str,
         trend = {"arrow": "↑", "cls": "danger",
                  "note": f"{prev_total} → {last_total}"}
     else:
-        trend = {"arrow": "→", "cls": "secondary", "note": "без изменений"}
+        trend = {"arrow": "→", "cls": "secondary", "note": "no change"}
     tpl = _env().get_template("timeline.html.j2")
     return tpl.render(
         history=hist,

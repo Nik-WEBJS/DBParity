@@ -1,8 +1,8 @@
-"""Сверка структуры таблиц: колонки, логические типы, первичные ключи.
+"""Table structure comparison: columns, logical types, primary keys.
 
-Сопоставление имён — регистронезависимое (Oracle отдаёт UPPER, Postgres — lower).
-Типы сравниваются по «логическому» типу адаптера (text/number/float/datetime/…),
-а не по сырым именам типов движков.
+Name matching is case-insensitive (Oracle returns UPPER, Postgres — lower).
+Types are compared by the adapter's "logical" type (text/number/float/datetime/…),
+not by the engines' raw type names.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def diff_schemas(
     src_schemas: Dict[str, TableSchema],
     dst_schemas: Dict[str, TableSchema],
 ) -> list:
-    """Возвращает только таблицы, где есть расхождения структуры."""
+    """Returns only tables that have structural differences."""
     out = []
     for table in sorted(src_schemas):
         if table in dst_schemas:

@@ -1,7 +1,7 @@
-"""Модели результатов сверки.
+"""Comparison result models.
 
-Здесь же живёт версия схемы JSON-отчёта (REPORT_SCHEMA_VERSION) —
-формат отчёта заморожен и описан в docs/report-format.md.
+The JSON report schema version (REPORT_SCHEMA_VERSION) also lives here —
+the report format is frozen and described in docs/report-format.md.
 """
 from __future__ import annotations
 
@@ -10,32 +10,32 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-#: Версия схемы JSON-отчёта (ключ "schema_version" в RunResult.to_dict()).
+#: JSON report schema version (the "schema_version" key in RunResult.to_dict()).
 #:
-#: Правила эволюции формата (semver-гарантии, роадмап v0.9):
-#: - ДОБАВЛЕНИЕ новых ключей — минорное изменение: версия НЕ меняется,
-#:   потребители обязаны игнорировать незнакомые ключи. Каждый новый ключ
-#:   обязан быть задокументирован в docs/report-format.md.
-#: - УДАЛЕНИЕ, ПЕРЕИМЕНОВАНИЕ ключа либо смена типа/семантики значения —
-#:   мажорное изменение: REPORT_SCHEMA_VERSION инкрементируется, изменение
-#:   описывается в docs/report-format.md и CHANGELOG.
-#: Замороженный набор ключей v1 охраняется тестом tests/test_report_schema.py.
+#: Format evolution rules (semver guarantees, v0.9 roadmap):
+#: - ADDING new keys is a minor change: the version does NOT change,
+#:   consumers must ignore unfamiliar keys. Every new key must be
+#:   documented in docs/report-format.md.
+#: - REMOVING or RENAMING a key, or changing a value's type/semantics, is
+#:   a major change: REPORT_SCHEMA_VERSION is incremented and the change
+#:   is described in docs/report-format.md and the CHANGELOG.
+#: The frozen v1 key set is guarded by tests/test_report_schema.py.
 REPORT_SCHEMA_VERSION = 1
 
 
 class DiffKind(str, Enum):
-    MISSING_IN_TARGET = "missing_in_target"   # строка есть в источнике, нет в приёмнике
-    EXTRA_IN_TARGET = "extra_in_target"       # лишняя строка в приёмнике
-    MISMATCH = "mismatch"                     # PK совпал, значения различаются
-    DUPLICATE_PK = "duplicate_pk"             # дубликат первичного ключа
-    NULL_PK = "null_pk"                       # NULL в PK — merge по такой строке невозможен
+    MISSING_IN_TARGET = "missing_in_target"   # the row exists in source but not in target
+    EXTRA_IN_TARGET = "extra_in_target"       # an extra row in target
+    MISMATCH = "mismatch"                     # PK matched, values differ
+    DUPLICATE_PK = "duplicate_pk"             # duplicate primary key
+    NULL_PK = "null_pk"                       # NULL in PK — merging on such a row is impossible
 
 
 @dataclass
 class RowDiff:
     kind: DiffKind
     pk: tuple
-    # для MISMATCH: {колонка: (значение_источника, значение_приёмника)}
+    # for MISMATCH: {column: (source_value, target_value)}
     columns: Optional[dict] = None
 
 
@@ -57,8 +57,8 @@ class TableResult:
     error: Optional[str] = None
     duration_s: float = 0.0
     mode: str = "stream"                # stream | hash
-    rows_hash_matched: int = 0          # строк зачтено по совпавшим сегментам
-    rows_streamed: int = 0              # строк детализировано потоково (src+dst)
+    rows_hash_matched: int = 0          # rows credited via matching segments
+    rows_streamed: int = 0              # rows detailed via streaming (src+dst)
     segments_matched: int = 0
     segments_streamed: int = 0
 
@@ -88,8 +88,8 @@ class TableResult:
 @dataclass
 class TableSchemaDiff:
     table: str
-    missing_in_target: list = field(default_factory=list)   # колонки
-    extra_in_target: list = field(default_factory=list)     # колонки
+    missing_in_target: list = field(default_factory=list)   # columns
+    extra_in_target: list = field(default_factory=list)     # columns
     type_changes: list = field(default_factory=list)        # [{column, source, target}]
     pk_mismatch: Optional[dict] = None                      # {source: [...], target: [...]}
 
@@ -142,11 +142,11 @@ class RunResult:
         return t
 
     def to_dict(self) -> dict:
-        """Словарь для JSON-отчёта. Формат заморожен: docs/report-format.md.
+        """Dict for the JSON report. The format is frozen: docs/report-format.md.
 
-        Первым смысловым полем идёт "schema_version" — потребители проверяют
-        его до разбора остального. Правила эволюции ключей — в докстринге
-        константы REPORT_SCHEMA_VERSION выше.
+        The first meaningful field is "schema_version" — consumers check it
+        before parsing the rest. Key evolution rules are in the docstring of
+        the REPORT_SCHEMA_VERSION constant above.
         """
         d: dict = {"schema_version": REPORT_SCHEMA_VERSION}
         d.update(asdict(self))

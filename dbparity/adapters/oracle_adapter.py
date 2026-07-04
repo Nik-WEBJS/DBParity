@@ -1,4 +1,4 @@
-"""Oracle-адаптер (python-oracledb, thin mode — без Instant Client)."""
+"""Oracle adapter (python-oracledb, thin mode — no Instant Client)."""
 from __future__ import annotations
 
 from typing import Iterator, List, Sequence
@@ -20,7 +20,7 @@ def _logical(data_type: str) -> str:
     if any(x in u for x in ("BINARY_FLOAT", "BINARY_DOUBLE", "FLOAT")):
         return "float"
     if "TIMESTAMP" in u or u == "DATE":
-        return "datetime"   # Oracle DATE несёт время — сравнивается как datetime
+        return "datetime"   # Oracle DATE carries time — compared as datetime
     if any(x in u for x in ("BLOB", "RAW")):
         return "bytes"
     return "text"
@@ -32,13 +32,13 @@ class OracleAdapter(Adapter):
 
     def __init__(self, endpoint):
         if oracledb is None:  # pragma: no cover
-            raise RuntimeError("Для oracle установите зависимость: pip install oracledb")
+            raise RuntimeError("oracle support requires: pip install oracledb")
         super().__init__(endpoint)
-        # КРИТИЧНО для верификатора:
-        # 1) NUMBER по умолчанию приходит как float → потеря точности на
-        #    больших/дробных значениях → ложные результаты. Забираем Decimal.
-        # 2) LOB-локаторы → сразу значения (str/bytes), иначе сравнение
-        #    невозможно после закрытия курсора.
+        # CRITICAL for a verifier:
+        # 1) NUMBER arrives as float by default → precision loss on
+        #    large/fractional values → false results. Fetch Decimal.
+        # 2) LOB locators → values right away (str/bytes), otherwise
+        #    comparison is impossible after the cursor closes.
         oracledb.defaults.fetch_decimals = True
         oracledb.defaults.fetch_lobs = False
         o = endpoint.options
@@ -47,7 +47,7 @@ class OracleAdapter(Adapter):
         )
         self.owner = (o.get("schema") or o.get("user") or "").upper()
 
-    def list_tables(self) -> List[str]:  # pragma: no cover — нет сервера в CI
+    def list_tables(self) -> List[str]:  # pragma: no cover — no server in CI
         cur = self.conn.cursor()
         cur.execute(
             "SELECT table_name FROM all_tables WHERE owner = :o ORDER BY table_name",
@@ -89,14 +89,14 @@ class OracleAdapter(Adapter):
         where, params = "", {}
         if pk_range is not None:
             col, lo, hi = pk_range
-            if hi is None:      # открытый диапазон — для resume с watermark
+            if hi is None:      # open range — for resume with a watermark
                 where = f" WHERE {q(col)} >= :lo"
                 params = {"lo": lo}
             else:
                 where = f" WHERE {q(col)} >= :lo AND {q(col)} <= :hi"
                 params = {"lo": lo, "hi": hi}
-        # текстовые order_by-колонки — бинарная сортировка, независимая
-        # от NLS_SORT сессии (согласуется с COLLATE "C"/BINARY других БД)
+        # text order_by columns — binary sorting, independent of the
+        # session's NLS_SORT (consistent with COLLATE "C"/BINARY of other DBs)
         logs = order_logicals or [None] * len(order_by)
         order_sql = ", ".join(
             f"NLSSORT({q(c)}, 'NLS_SORT=BINARY')" if lg == "text" else q(c)
@@ -112,7 +112,7 @@ class OracleAdapter(Adapter):
         for row in cur:
             yield tuple(row)
 
-    # ---- digest-API (experimental: не обкатан на живом Oracle) --------------
+    # ---- digest API (experimental: not exercised on a live Oracle) ----------
 
     supports_digest = True
 
@@ -123,17 +123,17 @@ class OracleAdapter(Adapter):
     def _canon(self, col: str, logical: str, rtrim: bool) -> str:  # pragma: no cover
         q = self._q(col)
         if logical == "number":
-            # TM9: 100 → '100', 1.5 → '1.5'. Нюанс: 0.5 → '.5' (не '0.5') —
-            # для таких значений хэш разойдётся с PG и сегмент уйдёт в
-            # row-режим: медленнее, но корректно.
+            # TM9: 100 → '100', 1.5 → '1.5'. Caveat: 0.5 → '.5' (not '0.5') —
+            # for such values the hash diverges from PG and the segment goes
+            # into row mode: slower, but correct.
             return f"CASE WHEN {q} IS NULL THEN 'N' ELSE TO_CHAR({q}, 'TM9') END"
         if logical == "bool":
             return (f"CASE WHEN {q} IS NULL THEN 'N' "
                     f"WHEN {q} = 1 THEN '1' ELSE '0' END")
         v = f"RTRIM({q}, ' ')" if rtrim else q
-        # В Oracle '' == NULL, поэтому пустые строки попадают в ветку 'N';
-        # расхождение с приёмником уводит сегмент в row-режим, где действует
-        # правило oracle_empty_string_is_null.
+        # In Oracle '' == NULL, so empty strings fall into the 'N' branch;
+        # a divergence with the target sends the segment into row mode,
+        # where the oracle_empty_string_is_null rule applies.
         return (f"CASE WHEN {q} IS NULL THEN 'N' "
                 f"ELSE LOWER(RAWTOHEX(STANDARD_HASH({v}, 'MD5'))) END")
 

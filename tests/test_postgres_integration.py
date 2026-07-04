@@ -1,7 +1,7 @@
-"""Live-интеграция с PostgreSQL (запускается при заданном DBPARITY_PG_DSN).
+"""Live integration with PostgreSQL (runs when DBPARITY_PG_DSN is set).
 
-В песочнице сервером выступает PGlite (Postgres в WASM) через pglite-socket;
-локально — любой PostgreSQL: `docker compose up -d` и
+In the sandbox the server is PGlite (Postgres in WASM) via pglite-socket;
+locally, any PostgreSQL works: `docker compose up -d` and
 `DBPARITY_PG_DSN="host=127.0.0.1 dbname=dbparity user=postgres password=dbparity" pytest`.
 """
 import os
@@ -17,14 +17,14 @@ from dbparity.demo import seed
 DSN = os.environ.get("DBPARITY_PG_DSN")
 
 pytestmark = pytest.mark.skipif(
-    not DSN, reason="DBPARITY_PG_DSN не задан — нужен живой PostgreSQL")
+    not DSN, reason="DBPARITY_PG_DSN not set - requires a live PostgreSQL")
 
 
 @pytest.fixture()
 def pg_target():
     psycopg = pytest.importorskip("psycopg")
     conn = psycopg.connect(DSN, autocommit=True)
-    conn.prepare_threshold = None       # PGlite: одна сессия на все коннекты
+    conn.prepare_threshold = None       # PGlite: one session serves all connects
     cur = conn.cursor()
     cur.execute("DEALLOCATE ALL")
     for t in ("customers", "orders", "products", "audit_new"):
@@ -56,14 +56,14 @@ def pg_target():
         seed.product_rows())
     cur.executemany("INSERT INTO audit_new VALUES (%s,%s)",
                     [(i, f"migrated batch {i}") for i in range(1, 11)])
-    # закрываем ДО yield: PGlite-socket держит одно соединение за раз,
-    # а engine.run() откроет своё
+    # close BEFORE yield: pglite-socket holds one connection at a time,
+    # and engine.run() opens its own
     conn.close()
     yield
 
 
 def test_sqlite_source_to_live_postgres(pg_target, tmp_path):
-    demo_cfg = seed.build_demo(tmp_path)          # sqlite-источник («Oracle»)
+    demo_cfg = seed.build_demo(tmp_path)          # sqlite source ("Oracle" stand-in)
     cfg = Config(
         source=demo_cfg.source,
         target=EndpointConfig(
@@ -76,7 +76,7 @@ def test_sqlite_source_to_live_postgres(pg_target, tmp_path):
     run = engine.run(cfg)
     by = {t.table: t for t in run.tables}
 
-    # те же ожидаемые счётчики, что и в sqlite-демо
+    # the same expected counters as in the sqlite demo
     for key, exp in seed.EXPECTED["customers"].items():
         assert getattr(by["customers"], key) == exp, f"customers.{key}"
     for key, exp in seed.EXPECTED["orders"].items():
@@ -86,17 +86,17 @@ def test_sqlite_source_to_live_postgres(pg_target, tmp_path):
     assert run.tables_only_in_source == ["legacy_log"]
     assert run.tables_only_in_target == ["audit_new"]
 
-    # смена типов (real→numeric, int→boolean) видна в схеме…
+    # type changes (real->numeric, int->boolean) are visible in the schema...
     sd = {d.table: d for d in run.schema_diffs}
     assert "customers" in sd
     changed = {c["column"] for c in sd["customers"].type_changes}
     assert "is_active" in changed
-    # …но ложных расхождений ДАННЫХ не создаёт (проверено счётчиками выше)
+    # ...but produce no false DATA diffs (verified by the counters above)
     assert not run.equivalent
 
 
 def test_hash_mode_sqlite_to_live_postgres(tmp_path):
-    """Кросс-движковые сегментные хэши: sqlite-канонизация == PG trim_scale."""
+    """Cross-engine segment hashes: sqlite canonicalization == PG trim_scale."""
     psycopg = pytest.importorskip("psycopg")
     n = 3000
     rows = [(i, f"item {i}", 100 if i % 10 == 0 else i % 47,
@@ -111,12 +111,12 @@ def test_hash_mode_sqlite_to_live_postgres(tmp_path):
     conn.close()
 
     pg = psycopg.connect(DSN, autocommit=True)
-    pg.prepare_threshold = None         # PGlite: одна сессия на все коннекты
+    pg.prepare_threshold = None         # PGlite: one session serves all connects
     cur = pg.cursor()
     cur.execute("DEALLOCATE ALL")
     cur.execute("DROP TABLE IF EXISTS hnums")
-    # qty numeric(12,2): 100 хранится как 100.00 — trim_scale обязан
-    # свести к '100' и совпасть с канонизацией sqlite
+    # qty numeric(12,2): 100 is stored as 100.00 - trim_scale must reduce
+    # it to '100' and match the sqlite canonicalization
     cur.execute("CREATE TABLE hnums (id integer PRIMARY KEY, name text,"
                 " qty numeric(12,2), price numeric(12,2))")
     dst_rows = []
@@ -147,6 +147,6 @@ def test_hash_mode_sqlite_to_live_postgres(tmp_path):
     assert t.mismatched == 2
     assert t.missing_in_target == 0 and t.extra_in_target == 0
     assert t.matched == n - 2
-    # большинство строк зачтено агрегатами, без передачи по сети
+    # most rows are settled by aggregates, with no network transfer
     assert t.rows_hash_matched > n * 0.7
     assert t.rows_streamed < n

@@ -1,4 +1,4 @@
-"""История инкрементальных прогонов и таймлайн дрейфа (`dbparity history`)."""
+"""Incremental run history and the drift timeline (`dbparity history`)."""
 import json
 import sqlite3
 
@@ -18,7 +18,7 @@ def _entry(ts: str, diffs: int, full: bool = False) -> dict:
 
 
 def _build_pair(tmp_path):
-    """Пара sqlite с watermark-колонкой updated_at (числовая)."""
+    """A pair of sqlite DBs with a numeric watermark column updated_at."""
     for name in ("s.db", "d.db"):
         conn = sqlite3.connect(tmp_path / name)
         conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT,"
@@ -36,7 +36,7 @@ def _build_pair(tmp_path):
     return cfg
 
 
-# ---- стейт ------------------------------------------------------------------
+# ---- state ------------------------------------------------------------------
 
 def test_record_run_roundtrip(tmp_path):
     p = tmp_path / "st.json"
@@ -54,11 +54,11 @@ def test_history_limit(tmp_path, monkeypatch):
     for i in range(8):
         st.record_run(_entry(f"2026-07-03T0{i}:00:00+00:00", i))
     assert len(st.history) == 5
-    assert st.history[0]["tables"]["t"]["total_diffs"] == 3   # старые срезаны
+    assert st.history[0]["tables"]["t"]["total_diffs"] == 3   # oldest trimmed
 
 
 def test_old_state_without_history(tmp_path):
-    """Файл формата до появления history загружается с пустым журналом."""
+    """A state file predating history support loads with an empty journal."""
     p = tmp_path / "st.json"
     p.write_text(json.dumps({"version": 1, "fingerprint": "fp",
                              "tables": {"t": {"k": "int", "v": "105"}}}),
@@ -68,52 +68,52 @@ def test_old_state_without_history(tmp_path):
     assert st.last_watermark("t") == 105
 
 
-# ---- engine пишет историю -----------------------------------------------------
+# ---- engine writes history ----------------------------------------------------
 
 def test_engine_appends_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     cfg = _build_pair(tmp_path)()
-    engine.run(cfg)                          # полный первый прогон
+    engine.run(cfg)                          # full first run
 
-    for name in ("s.db", "d.db"):            # синхронная мутация одной строки
+    for name in ("s.db", "d.db"):            # synchronized mutation of one row
         conn = sqlite3.connect(tmp_path / name)
         conn.execute("UPDATE t SET v='new', updated_at=200 WHERE id=3")
         conn.commit()
         conn.close()
-    engine.run(cfg)                          # инкрементальный второй
+    engine.run(cfg)                          # incremental second run
 
     ifp = state_fingerprint(cfg)
     st = IncrementalState.load_or_create(default_state_path(ifp), ifp)
     hist = st.history
     assert len(hist) == 2
     assert hist[0]["tables"]["t"]["src_rows"] == 5
-    # изменённая строка + строка-граница (фильтр wm >= last включителен —
-    # страховка от одновременных записей на границе watermark)
+    # the changed row + the boundary row (the wm >= last filter is inclusive -
+    # a safeguard against concurrent writes right at the watermark boundary)
     assert hist[1]["tables"]["t"]["src_rows"] == 2
     assert hist[1]["equivalent"] is True
 
 
-# ---- рендер и CLI -------------------------------------------------------------
+# ---- rendering and CLI --------------------------------------------------------
 
 def test_render_timeline_html():
     hist = [_entry("2026-07-03T10:00:00+00:00", 7),
             _entry("2026-07-03T11:00:00+00:00", 2),
             _entry("2026-07-03T12:00:00+00:00", 0)]
     html = render_timeline_html(hist, "Oracle PROD", "PG NEW")
-    assert "ДРЕЙФ НУЛЕВОЙ" in html
+    assert "ZERO DRIFT" in html
     assert "Oracle PROD" in html and "PG NEW" in html
     assert "tabler" in html and "chart.umd" in html
     assert '"total": [7, 2, 0]' in html.replace("'", '"') or "7, 2, 0" in html
 
     html_red = render_timeline_html(hist[:2], "S", "D")
-    assert "ДРЕЙФ НУЛЕВОЙ" not in html_red
+    assert "ZERO DRIFT" not in html_red
 
 
 def test_cli_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     cfg_factory = _build_pair(tmp_path)
     cfg = cfg_factory()
-    # YAML-конфиг для CLI (та же карта incremental → тот же fingerprint)
+    # YAML config for the CLI (same incremental map -> same fingerprint)
     cfg_yaml = tmp_path / "cfg.yaml"
     cfg_yaml.write_text(
         "source: {type: sqlite, label: S, path: %s}\n"
@@ -123,11 +123,11 @@ def test_cli_history(tmp_path, monkeypatch):
         encoding="utf-8")
 
     rc_empty = cli.main(["history", "-c", str(cfg_yaml)])
-    assert rc_empty == 2                     # истории ещё нет
+    assert rc_empty == 2                     # no history yet
 
-    engine.run(cfg)                          # появилась одна запись
+    engine.run(cfg)                          # one entry now exists
     out_html = tmp_path / "timeline.html"
     rc = cli.main(["history", "-c", str(cfg_yaml), "--html", str(out_html)])
     assert rc == 0
     assert out_html.exists()
-    assert "Таймлайн" in out_html.read_text(encoding="utf-8")
+    assert "Drift timeline" in out_html.read_text(encoding="utf-8")

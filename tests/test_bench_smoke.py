@@ -1,8 +1,8 @@
-"""Smoke-тест бенчмарка: маленький N + режим --json.
+"""Benchmark smoke test: small N + --json mode.
 
-Проверяет контракт JSON-вывода, на который опирается CI-workflow Benchmark
-(bench.yml): валидный JSON, полный набор ключей, корректные счётчики.
-Скорость здесь не проверяется — пороги живут в самом workflow.
+Verifies the JSON output contract that the Benchmark CI workflow
+(bench.yml) relies on: valid JSON, full key set, correct counters.
+Speed is not checked here - the thresholds live in the workflow itself.
 """
 import json
 import subprocess
@@ -30,6 +30,6 @@ def test_bench_json_smoke(tmp_path):
     assert data["diffs_ok"] is True
     assert data["generic_rows_per_s"] > 0
     assert data["fastpath_rows_per_s"] > 0
-    # hash-режим прошёл по всем строкам, потоково — не больше, чем всего
+    # hash mode covered every row; streamed no more than the total
     assert data["hash_total_rows"] == 2 * N
     assert 0 < data["hash_rows_streamed"] <= data["hash_total_rows"]

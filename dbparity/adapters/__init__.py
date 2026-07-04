@@ -1,11 +1,11 @@
-"""Адаптеры источников данных."""
+"""Data source adapters."""
 from __future__ import annotations
 
 from .base import Adapter, ColumnSchema, TableSchema
 
 
 def build_adapter(endpoint) -> Adapter:
-    """Фабрика адаптеров по конфигу эндпоинта."""
+    """Adapter factory based on the endpoint config."""
     t = endpoint.type
     if t == "sqlite":
         from .sqlite_adapter import SQLiteAdapter
@@ -19,8 +19,8 @@ def build_adapter(endpoint) -> Adapter:
     if t == "mssql":
         from .mssql_adapter import MSSQLAdapter
         return MSSQLAdapter(endpoint)
-    raise ValueError(f"Неизвестный тип источника: {t!r} "
-                     f"(поддерживаются: sqlite, postgres, oracle, mssql)")
+    raise ValueError(f"Unknown source type: {t!r} "
+                     f"(supported: sqlite, postgres, oracle, mssql)")
 
 
 __all__ = ["Adapter", "ColumnSchema", "TableSchema", "build_adapter"]

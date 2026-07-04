@@ -1,130 +1,130 @@
-# Справочник config.yaml
+# config.yaml reference
 
-Полный перечень ключей конфигурации DBParity по состоянию кода
-`dbparity/config.py` (DBParity 0.5.x). Конфиг — YAML-словарь; загрузка
-`dbparity run -c config.yaml`. Перед построением конфига словарь проходит
-валидацию (`validate_config_dict`, она же — команда `dbparity validate`):
-неизвестные ключи верхнего уровня и правил — ошибка с подсказкой
-«возможно, имелось в виду …».
+The complete list of DBParity configuration keys as implemented in
+`dbparity/config.py` (DBParity 0.5.x). The config is a YAML mapping, loaded
+with `dbparity run -c config.yaml`. Before the config object is built, the
+mapping goes through validation (`validate_config_dict`, also exposed as the
+`dbparity validate` command): an unknown top-level or rule key is an error
+with a "did you mean …" hint.
 
-## Ключи верхнего уровня
+## Top-level keys
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `source` | object | — (обязателен) | Подключение к источнику (эталон, «как было»). См. «Эндпоинты». |
-| `target` | object | — (обязателен) | Подключение к приёмнику (проверяемая БД, «как стало»). |
-| `tables` | list<string> \| null | `null` | Явный список таблиц для сверки. `null` — все общие таблицы обеих БД. Таблица из списка, отсутствующая хотя бы с одной стороны, попадает в отчёт с `error`. |
-| `pk_overrides` | object | `{}` | `{таблица: [колонки]}` — принудительный первичный ключ (когда PK в БД нет или он не подходит). Имена приводятся к нижнему регистру. |
-| `exclude_columns` | object | `{}` | `{таблица: [колонки]}` — исключить колонки из сравнения (audit-поля, `updated_at` и т.п.). Имена приводятся к нижнему регистру. PK исключать нельзя — сверка таблицы завершится ошибкой. |
-| `rules` | object | все дефолты | Правила нормализации значений. См. «rules». |
-| `strategy` | string | `auto` | `auto` \| `stream` \| `hash`. `stream` — только потоковый merge; `hash` — просить hash-режим (при непригодной таблице будет потоковый + warning); `auto` — hash-режим там, где он применим. |
-| `hash_leaf_rows` | int ≥ 1 | `20000` | Шаг бакета по PK в hash-режиме (≈ строк в сегменте при плотном ключе). Меньше — точнее локализация расхождений, больше DB-side группировок. |
-| `workers` | int ≥ 1 | `1` | Параллельная сверка таблиц (каждый поток открывает свои соединения к обеим БД). |
-| `sample_limit` | int ≥ 0 | `50` | Максимум примеров расхождений (`samples`) на таблицу в отчёте. `0` — только счётчики. |
-| `batch_size` | int ≥ 1 | `5000` | Размер чанка потокового чтения строк (fetchmany/arraysize/itersize). |
-| `mask_values` | bool | `false` | Маскировать значения колонок в примерах расхождений строкой `•••` (PII). Значения PK не маскируются. |
-| `checkpoint` | string \| null | `null` | Путь к файлу чекпоинта. Задан — прогресс периодически сохраняется, `--resume` продолжает с места обрыва. При resume без указания пути используется авто-имя `.dbparity_ckpt_<fingerprint>.json`. |
-| `checkpoint_every_rows` | int ≥ 1000 | `500000` | Как часто (в обработанных строках src+dst) снимать чекпоинт внутри таблицы. |
-| `retry_attempts` | int ≥ 1 | `1` | Попыток сверки таблицы при ошибках БД/сети. `1` = без ретраев. |
-| `retry_backoff_s` | number ≥ 0 | `2.0` | Базовая пауза между попытками; фактическая пауза = `retry_backoff_s × номер_попытки`. |
-| `incremental` | dict таблица→колонка | `{}` | Инкрементальный режим для dual-write: watermark-колонка на таблицу (есть в обеих БД, монотонно растёт при изменении строки — timestamp или числовая версия). После первого полного прогона сверяются только строки с `wm >= сохранённого максимума`; missing/extra среди изменённых = дрейф. Стейт `.dbparity_incr_<fp>.json`; полная пересверка — флаг `--full`. С hash-режимом и resume в одном прогоне не совмещается (разрешается автоматически, с заметкой в отчёте). |
-| `report` | object | `{}` | Куда писать отчёты: ключи `html` и/или `json` (строки-пути). Не задано — отчёт-файлы не пишутся. |
+| `source` | object | — (required) | Connection to the source (the reference, the "before" side). See "Endpoints". |
+| `target` | object | — (required) | Connection to the target (the database under verification, the "after" side). |
+| `tables` | list<string> \| null | `null` | Explicit list of tables to compare. `null` — all tables common to both databases. A listed table missing on either side lands in the report with `error` set. |
+| `pk_overrides` | object | `{}` | `{table: [columns]}` — force a primary key (when the database has no PK or the existing one is unsuitable). Names are lower-cased. |
+| `exclude_columns` | object | `{}` | `{table: [columns]}` — exclude columns from the comparison (audit fields, `updated_at`, etc.). Names are lower-cased. PK columns cannot be excluded — the table comparison would end with an error. |
+| `rules` | object | all defaults | Value normalization rules. See "rules". |
+| `strategy` | string | `auto` | `auto` \| `stream` \| `hash`. `stream` — streaming merge only; `hash` — request hash mode (an unsuitable table falls back to streaming + a warning); `auto` — hash mode wherever it applies. |
+| `hash_leaf_rows` | int ≥ 1 | `20000` | PK bucket step in hash mode (≈ rows per segment with a dense key). Smaller — more precise localization of differences, more DB-side groupings. |
+| `workers` | int ≥ 1 | `1` | Parallel table comparison (each thread opens its own connections to both databases). |
+| `sample_limit` | int ≥ 0 | `50` | Maximum number of difference samples (`samples`) per table in the report. `0` — counters only. |
+| `batch_size` | int ≥ 1 | `5000` | Chunk size for streaming row reads (fetchmany/arraysize/itersize). |
+| `mask_values` | bool | `false` | Mask column values in difference samples with the string `•••` (PII). PK values are not masked. |
+| `checkpoint` | string \| null | `null` | Path to the checkpoint file. When set, progress is saved periodically and `--resume` continues from the point of interruption. On resume without an explicit path, the auto-generated name `.dbparity_ckpt_<fingerprint>.json` is used. |
+| `checkpoint_every_rows` | int ≥ 1000 | `500000` | How often (in processed src+dst rows) to take a checkpoint within a table. |
+| `retry_attempts` | int ≥ 1 | `1` | Comparison attempts per table on DB/network errors. `1` = no retries. |
+| `retry_backoff_s` | number ≥ 0 | `2.0` | Base pause between attempts; the actual pause is `retry_backoff_s × attempt_number`. |
+| `incremental` | dict table→column | `{}` | Incremental mode for dual-write: one watermark column per table (present in both databases, growing monotonically whenever the row changes — a timestamp or a numeric version). After the first full run, only rows with `wm >= the saved maximum` are compared; missing/extra among the changed rows = drift. State lives in `.dbparity_incr_<fp>.json`; the `--full` flag forces a full re-comparison. Cannot be combined with hash mode or resume within a single run (resolved automatically, with a note in the report). |
+| `report` | object | `{}` | Where to write reports: keys `html` and/or `json` (path strings). If unset, no report files are written. |
 
 ### `report`
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `report.html` | string \| null | `null` | Путь к самодостаточному HTML-отчёту. |
-| `report.json` | string \| null | `null` | Путь к JSON-отчёту (формат заморожен — см. `docs/report-format.md`). |
+| `report.html` | string \| null | `null` | Path for the self-contained HTML report. |
+| `report.json` | string \| null | `null` | Path for the JSON report (frozen format — see `docs/report-format.md`). |
 
-## Эндпоинты (`source` / `target`)
+## Endpoints (`source` / `target`)
 
-Секция — словарь с обязательным `type` и параметрами подключения.
-Все ключи, кроме `type` и `label`, уходят адаптеру как опции.
+Each section is a mapping with a mandatory `type` plus connection parameters.
+Every key except `type` and `label` is passed to the adapter as an option.
 
-Общие ключи:
+Common keys:
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `type` | string | — (обязателен) | `sqlite` \| `postgres` (синоним `postgresql`) \| `oracle` \| `mssql`. |
-| `label` | string \| null | `null` | Человекочитаемая метка для отчётов (`source_label`/`target_label`). Не задана — генерируется из типа/пути. |
+| `type` | string | — (required) | `sqlite` \| `postgres` (alias `postgresql`) \| `oracle` \| `mssql`. |
+| `label` | string \| null | `null` | Human-readable label for reports (`source_label`/`target_label`). If unset, generated from the type/path. |
 
-В `config_summary` отчёта значения опций с именами `password`, `passwd`,
-`secret`, `token` маскируются (`•••`).
+In the report's `config_summary`, option values whose names are `password`,
+`passwd`, `secret`, `token` are masked (`•••`).
 
 ### type: sqlite
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `path` | string | — (обязателен) | Путь к файлу БД. |
-| `dialect_emulation` | string \| null | `null` | Применять к данным диалект-специфичные правила нормализации другого движка. Пример: `oracle` — на этой стороне заработает `oracle_empty_string_is_null`. Используется демо и тестами, полезно для «оракулоподобных» дампов в sqlite. |
+| `path` | string | — (required) | Path to the database file. |
+| `dialect_emulation` | string \| null | `null` | Apply another engine's dialect-specific normalization rules to the data on this side. Example: `oracle` — enables `oracle_empty_string_is_null` on this side. Used by the demo and the tests; handy for "Oracle-like" dumps loaded into sqlite. |
 
 ### type: postgres | postgresql
 
-Подключение — либо готовый `dsn`, либо набор `host`+`dbname`+`user`
-(валидатор требует одно из двух).
+Connect either with a ready-made `dsn` or with a `host`+`dbname`+`user` set
+(the validator requires one of the two).
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `dsn` | string \| null | `null` | Строка подключения psycopg (URI или keyword-формат). Если задана — остальные параметры подключения не нужны. |
-| `host` | string | `localhost` | Хост (при сборке DSN из частей). |
-| `port` | int | `5432` | Порт. |
-| `dbname` | string | — | Имя БД (обязателен без `dsn`). Синоним: `database`. |
-| `database` | string | — | Синоним `dbname`. |
-| `user` | string | — | Пользователь (обязателен без `dsn`). |
-| `password` | string \| null | `null` | Пароль (маскируется в отчёте). |
-| `schema` | string | `public` | Схема, в которой ищутся таблицы. |
-| `server_side` | bool | `true` | Серверный (named) курсор для потокового чтения. `false` — обычный курсор с `fetchmany` (для окружений без `DECLARE CURSOR`, например PGlite). |
-| `prepare_threshold` | int \| null | не задан | Прокидывается в `psycopg.Connection.prepare_threshold`. `null` отключает авто-prepare — нужно для общих сессий (PGlite, пулеры в transaction-режиме). Если ключ не указан, действует дефолт psycopg. |
+| `dsn` | string \| null | `null` | psycopg connection string (URI or keyword format). When set, the other connection parameters are not needed. |
+| `host` | string | `localhost` | Host (when the DSN is assembled from parts). |
+| `port` | int | `5432` | Port. |
+| `dbname` | string | — | Database name (required without `dsn`). Alias: `database`. |
+| `database` | string | — | Alias for `dbname`. |
+| `user` | string | — | User (required without `dsn`). |
+| `password` | string \| null | `null` | Password (masked in the report). |
+| `schema` | string | `public` | Schema in which tables are looked up. |
+| `server_side` | bool | `true` | Server-side (named) cursor for streaming reads. `false` — a regular cursor with `fetchmany` (for environments without `DECLARE CURSOR`, e.g. PGlite). |
+| `prepare_threshold` | int \| null | unset | Passed through to `psycopg.Connection.prepare_threshold`. `null` disables auto-prepare — needed for shared sessions (PGlite, poolers in transaction mode). If the key is omitted, the psycopg default applies. |
 
 ### type: oracle
 
-Адаптер python-oracledb (thin mode, без Instant Client). Адаптер сам
-включает `fetch_decimals` (NUMBER → Decimal, без потери точности)
-и `fetch_lobs=False` (LOB → значения).
+python-oracledb adapter (thin mode, no Instant Client). The adapter itself
+enables `fetch_decimals` (NUMBER → Decimal, no precision loss)
+and `fetch_lobs=False` (LOBs arrive as values).
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `user` | string | — (обязателен) | Пользователь. |
-| `password` | string | — (обязателен) | Пароль (маскируется в отчёте). |
-| `dsn` | string | — (обязателен) | DSN вида `host:port/service`. |
-| `schema` | string | = `user` | Владелец таблиц (owner); приводится к верхнему регистру. |
+| `user` | string | — (required) | User. |
+| `password` | string | — (required) | Password (masked in the report). |
+| `dsn` | string | — (required) | DSN of the form `host:port/service`. |
+| `schema` | string | = `user` | Table owner; upper-cased. |
 
 ### type: mssql
 
-Адаптер pyodbc: требуется системный ODBC-драйвер (msodbcsql18).
+pyodbc adapter: requires a system ODBC driver (msodbcsql18).
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `dsn` | string | — (обязателен) | ODBC connection string (`Driver=...;Server=...;Database=...;UID=...;PWD=...`). |
-| `schema` | string | `dbo` | Схема таблиц. |
+| `dsn` | string | — (required) | ODBC connection string (`Driver=...;Server=...;Database=...;UID=...;PWD=...`). |
+| `schema` | string | `dbo` | Table schema. |
 
-## `rules` — правила нормализации
+## `rules` — normalization rules
 
-Каждое правило нейтрализует конкретную «ловушку миграции»: расхождение
-представления данных, которое НЕ является расхождением содержимого.
-Неизвестное правило — ошибка валидации с подсказкой.
+Each rule neutralizes one specific "migration trap": a difference in how the
+data is represented that is NOT a difference in content. An unknown rule is
+a validation error with a hint.
 
-| Ключ | Тип | Дефолт | Описание |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `oracle_empty_string_is_null` | bool | `true` | **Ловушка:** Oracle физически хранит `''` как NULL, приёмник (PG и др.) различает их — тысячи ложных `mismatch` на текстовых полях. Правило приравнивает `''` к NULL **только на стороне с диалектом oracle** (адаптер oracle либо sqlite с `dialect_emulation: oracle`). |
-| `rtrim_strings` | bool | `false` | **Ловушка:** `CHAR(n)` в Oracle/MSSQL добивается пробелами до длины n; после миграции в `VARCHAR` паддинг пропадает — `'abc   ' != 'abc'`. Правило срезает хвостовые пробелы (только пробелы, не все whitespace) с обеих сторон. |
-| `unicode_nfc` | bool | `true` | **Ловушка:** один и тот же видимый текст в разных юникод-формах: `й` как единый U+0439 или как `и`+U+0306 (composed/decomposed). Правило приводит строки к NFC на обеих сторонах. |
-| `float_epsilon` | number ≥ 0 | `1e-9` | **Ловушка:** двоичные float при перегонке через текст/другой движок расходятся в последних битах (`0.30000000000000004`). Значения float округляются до `-log10(ε)` десятичных знаков перед сравнением. `0` — отключить округление (сравнение точных значений). |
-| `yn_as_bool` | bool | `false` | **Ловушка:** legacy-флаги `CHAR(1)` `'Y'/'N'/'T'/'F'` в источнике против настоящего `boolean` в приёмнике. Правило маппит эти буквы (без учёта регистра) в 1/0, а булевы значения — тоже в 1/0. Осторожно: «честные» текстовые значения `'y'`, `'n'`, `'t'`, `'f'` в данных тоже будут сконвертированы. |
-| `truncate_time_if_midnight` | bool | `false` | **Ловушка:** Oracle `DATE` всегда несёт время; при миграции в чистый `date` время теряется — `2025-01-01 00:00:00 != 2025-01-01`. Правило: datetime с временем ровно 00:00 сравнивается как дата. Осторожно: настоящая полуночная метка времени тоже станет датой. |
-| `timestamp_precision` | int 0..6 | `6` | **Ловушка:** разная точность долей секунды (Oracle `TIMESTAMP(6)` против MSSQL `datetime` ~3 знака и т.п.). Микросекунды усекаются до N десятичных знаков на обеих сторонах. |
-| `tz_to_utc` | bool | `true` | **Ловушка:** один момент времени, сохранённый в разных поясах (`12:00+03:00` и `09:00+00:00`), — не расхождение. Aware-datetime приводится к UTC и сравнивается без tzinfo (naive остаются как есть). |
-| `bytes_as_md5` | bool | `true` | **Ловушка/защита:** BLOB-ы могут быть гигантскими. Байтовые значения сравниваются как `"md5:<hex>"`-дайджест — в память и в samples попадает только хэш. `false` — сравнивать сырые байты. |
+| `oracle_empty_string_is_null` | bool | `true` | **Trap:** Oracle physically stores `''` as NULL, while the target (PG and others) distinguishes the two — thousands of false `mismatch` results on text columns. The rule equates `''` with NULL **only on the side with the oracle dialect** (the oracle adapter, or sqlite with `dialect_emulation: oracle`). |
+| `rtrim_strings` | bool | `false` | **Trap:** `CHAR(n)` in Oracle/MSSQL is space-padded to length n; after migrating to `VARCHAR` the padding is gone — `'abc   ' != 'abc'`. The rule strips trailing spaces (spaces only, not all whitespace) on both sides. |
+| `unicode_nfc` | bool | `true` | **Trap:** the same visible text in different Unicode forms: `é` as the single code point U+00E9 or as `e`+U+0301 (composed vs decomposed). The rule normalizes strings to NFC on both sides. |
+| `float_epsilon` | number ≥ 0 | `1e-9` | **Trap:** binary floats round-tripped through text or another engine diverge in the last bits (`0.30000000000000004`). Float values are rounded to `-log10(ε)` decimal digits before comparison. `0` — disable rounding (compare exact values). |
+| `yn_as_bool` | bool | `false` | **Trap:** legacy `CHAR(1)` flags `'Y'/'N'/'T'/'F'` in the source vs a real `boolean` in the target. The rule maps these letters (case-insensitively) to 1/0, and boolean values to 1/0 as well. Careful: genuine textual values `'y'`, `'n'`, `'t'`, `'f'` in the data get converted too. |
+| `truncate_time_if_midnight` | bool | `false` | **Trap:** Oracle `DATE` always carries a time component; migrating to a plain `date` drops it — `2025-01-01 00:00:00 != 2025-01-01`. Rule: a datetime whose time is exactly 00:00 is compared as a date. Careful: a genuine midnight timestamp becomes a date too. |
+| `timestamp_precision` | int 0..6 | `6` | **Trap:** differing fractional-second precision (Oracle `TIMESTAMP(6)` vs MSSQL `datetime` with ~3 digits, and so on). Microseconds are truncated to N decimal digits on both sides. |
+| `tz_to_utc` | bool | `true` | **Trap:** the same instant stored in different time zones (`12:00+03:00` and `09:00+00:00`) is not a difference. Aware datetimes are converted to UTC and compared without tzinfo (naive ones are left as is). |
+| `bytes_as_md5` | bool | `true` | **Trap/safeguard:** BLOBs can be enormous. Byte values are compared as an `"md5:<hex>"` digest — only the hash reaches memory and the samples. `false` — compare raw bytes. |
 
-## Пример полного конфига
+## Full config example
 
 ```yaml
 source:
   type: oracle
   label: Oracle PROD
   user: app
-  password: "секрет"          # в отчёте будет замаскирован
+  password: "secret"          # masked in the report
   dsn: ora-host:1521/ORCLPDB1
   schema: APP
 
@@ -135,15 +135,15 @@ target:
   port: 5432
   dbname: app
   user: verifier
-  password: "секрет"
+  password: "secret"
   schema: public
   server_side: true
-  # prepare_threshold: null   # для пулеров/PGlite
+  # prepare_threshold: null   # for poolers/PGlite
 
 tables: [customers, orders, products]
 
 pk_overrides:
-  orders_log: [order_id, seq]   # таблица без PK в БД
+  orders_log: [order_id, seq]   # table with no PK in the database
 
 exclude_columns:
   customers: [updated_at, sync_hash]
@@ -170,19 +170,19 @@ report:
   json: ./out/report.json
 ```
 
-## Валидация: сводка ограничений
+## Validation: constraint summary
 
-- `source`/`target` — обязательны; `type` из списка `sqlite | postgres |
-  postgresql | oracle | mssql`; обязательные параметры по типу (см. выше).
-- Минимумы: `workers ≥ 1`, `sample_limit ≥ 0`, `batch_size ≥ 1`,
+- `source`/`target` are required; `type` must be one of `sqlite | postgres |
+  postgresql | oracle | mssql`; type-specific required parameters (see above).
+- Minimums: `workers ≥ 1`, `sample_limit ≥ 0`, `batch_size ≥ 1`,
   `hash_leaf_rows ≥ 1`, `checkpoint_every_rows ≥ 1000`,
   `retry_attempts ≥ 1`, `retry_backoff_s ≥ 0`.
-- `strategy` — только `auto | stream | hash`.
-- `tables` — список строк; `pk_overrides`/`exclude_columns` — словари
-  `{таблица: [колонки]}`.
-- `rules.timestamp_precision` — целое 0..6; `rules.float_epsilon` — число ≥ 0;
-  остальные правила — булевы.
-- Неизвестный ключ верхнего уровня или правила — ошибка с подсказкой.
+- `strategy` — only `auto | stream | hash`.
+- `tables` — a list of strings; `pk_overrides`/`exclude_columns` — mappings
+  `{table: [columns]}`.
+- `rules.timestamp_precision` — an integer 0..6; `rules.float_epsilon` —
+  a number ≥ 0; the remaining rules are booleans.
+- An unknown top-level or rule key is an error with a hint.
 
-> Примечание: справочник отражает `config.py` на момент DBParity 0.5.x;
-> новые ключи документируются по мере появления.
+> Note: this reference reflects `config.py` as of DBParity 0.5.x;
+> new keys are documented as they appear.

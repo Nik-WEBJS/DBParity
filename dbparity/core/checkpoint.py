@@ -1,12 +1,12 @@
-"""Чекпоинты: атомарный JSON-стейт для продолжения сверки после обрыва.
+"""Checkpoints: atomic JSON state to resume a comparison after an interruption.
 
-Схема: завершённые таблицы сохраняются целиком; для текущей таблицы
-(stream-режим, одноколоночный PK) периодически пишется watermark —
-значение PK, ниже которого всё учтено. Возобновление читает счётчики
-и продолжает потоки с `WHERE pk >= watermark`.
+Scheme: completed tables are saved in full; for the current table
+(stream mode, single-column PK) a watermark is written periodically —
+the PK value below which everything is accounted for. Resuming reads the
+counters and continues the streams with `WHERE pk >= watermark`.
 
-Файл валиден только для того же конфига (fingerprint) — смена правил,
-таблиц или эндпоинтов делает старый стейт бессмысленным.
+The file is valid only for the same config (fingerprint) — changing rules,
+tables, or endpoints makes the old state meaningless.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def config_fingerprint(config) -> str:
 
 
 def _wm_encode(v) -> Optional[dict]:
-    """Watermark сериализуем только для «безопасных» типов PK."""
+    """The watermark is serialized only for "safe" PK types."""
     if isinstance(v, bool):
         return None
     if isinstance(v, int):
@@ -52,7 +52,7 @@ def _wm_encode(v) -> Optional[dict]:
     if isinstance(v, Decimal):
         if v == v.to_integral_value():
             return {"k": "int", "v": str(int(v))}
-        return None     # неинтегральный numeric: float-граница рискованна
+        return None     # non-integral numeric: a float boundary is risky
     if isinstance(v, str):
         return {"k": "str", "v": v}
     return None
@@ -84,8 +84,8 @@ class Checkpointer:
         self.path = Path(path)
         self.fp = fingerprint
         self._lock = threading.Lock()
-        # partial — незавершённые таблицы (слот на таблицу: упавшая таблица
-        # не теряет свой watermark из-за соседей, идущих следом)
+        # partial — unfinished tables (one slot per table: a failed table
+        # does not lose its watermark because of neighbors running after it)
         self._state = {"version": STATE_VERSION, "fingerprint": fingerprint,
                        "done": {}, "partial": {}}
         self.resumed_tables: set = set()
@@ -101,31 +101,31 @@ class Checkpointer:
                     ck._state = data
                     ck.resumed_tables = set(data.get("done", {}))
             except (OSError, json.JSONDecodeError, KeyError):
-                pass    # битый/чужой файл — начинаем заново
+                pass    # corrupted/foreign file — start over
         return ck
 
-    # ---- чтение -------------------------------------------------------------
+    # ---- reading --------------------------------------------------------------
 
     def done_table(self, table: str) -> Optional[TableResult]:
         d = self._state["done"].get(table)
         return table_result_from_dict(d) if d else None
 
     def current_snapshot(self, table: str):
-        """(TableResult, watermark) для прерванной таблицы, либо None."""
+        """(TableResult, watermark) for an interrupted table, or None."""
         cur = self._state.get("partial", {}).get(table)
         if cur and cur.get("watermark"):
             return (table_result_from_dict(cur["result"]),
                     _wm_decode(cur["watermark"]))
         return None
 
-    # ---- запись -------------------------------------------------------------
+    # ---- writing --------------------------------------------------------------
 
     def _save(self) -> None:
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         tmp.write_text(
             json.dumps(self._state, ensure_ascii=False, default=str),
             encoding="utf-8")
-        os.replace(tmp, self.path)      # атомарная подмена
+        os.replace(tmp, self.path)      # atomic swap
 
     def snapshot(self, table: str, tr: TableResult, watermark) -> None:
         enc = _wm_encode(watermark)

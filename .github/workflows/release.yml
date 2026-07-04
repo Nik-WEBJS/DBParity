@@ -1,7 +1,7 @@
 name: Release to PyPI
 
-# Публикация по тегу vX.Y.Z. Требуется одноразовая настройка
-# Trusted Publisher на pypi.org (см. ROADMAP.md, раздел «Как релизить»).
+# Publishes on a vX.Y.Z tag. Requires a one-time Trusted Publisher
+# setup on pypi.org (see ROADMAP.md, "How to release" section).
 on:
   push:
     tags: ["v*"]

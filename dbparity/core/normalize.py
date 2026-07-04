@@ -1,8 +1,8 @@
-"""Нормализация значений: приведение к канонической форме перед сравнением.
+"""Value normalization: reduction to a canonical form before comparison.
 
-Здесь закодированы классические «ловушки миграций» (см. PLAN.md §3):
-Oracle ''==NULL, хвостовые нули NUMBER, epsilon для float, таймзоны,
-паддинг CHAR, юникод-нормализация, булевы маппинги, BLOB→MD5.
+The classic "migration traps" are encoded here (see PLAN.md §3):
+Oracle ''==NULL, trailing NUMBER zeros, float epsilon, time zones,
+CHAR padding, Unicode normalization, boolean mappings, BLOB→MD5.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class NormalizeRules:
     float_epsilon: float = 1e-9
     yn_as_bool: bool = False
     truncate_time_if_midnight: bool = False
-    timestamp_precision: int = 6        # знаков микросекунд (0..6)
+    timestamp_precision: int = 6        # microsecond digits (0..6)
     tz_to_utc: bool = True
     bytes_as_md5: bool = True
 
@@ -83,14 +83,15 @@ class Normalizer:
             return v
         return value
 
-    # ---- fast-path: прекомпилированные пер-колоночные нормализаторы --------
+    # ---- fast path: precompiled per-column normalizers ---------------------
 
     def row_normalizer(self, logicals=None):
-        """Возвращает функцию row→tuple.
+        """Returns a row→tuple function.
 
-        Если известны логические типы колонок (из схемы адаптера), для каждой
-        колонки компилируется узкая функция без цепочки isinstance-проверок;
-        при неожиданном типе значения — фолбэк на универсальный normalize().
+        If the logical column types are known (from the adapter schema), a
+        narrow function without the isinstance-check chain is compiled for
+        each column; on an unexpected value type — fall back to the generic
+        normalize().
         """
         if not logicals:
             gen = self.normalize
@@ -149,5 +150,5 @@ class Normalizer:
                 return generic(v)
             return f_text
 
-        # datetime/date/bytes/bool и прочее — универсальный путь
+        # datetime/date/bytes/bool and the rest — the generic path
         return generic

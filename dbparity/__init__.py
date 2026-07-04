@@ -1,3 +1,3 @@
-"""DBParity — верификация эквивалентности данных при миграциях БД."""
+"""DBParity — data equivalence verification for database migrations."""
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"

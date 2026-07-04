@@ -1,10 +1,10 @@
-"""Live-интеграция с Microsoft SQL Server (при заданном DBPARITY_MSSQL_DSN).
+"""Live integration with Microsoft SQL Server (when DBPARITY_MSSQL_DSN is set).
 
-В CI сервером выступает контейнер mcr.microsoft.com/mssql/server:2022-latest;
-локально — любой SQL Server, например:
+In CI the server is an mcr.microsoft.com/mssql/server:2022-latest container;
+locally, any SQL Server works, e.g.:
 `docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='DbParity!Passw0rd' \
     -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest`
-и
+and
 DBPARITY_MSSQL_DSN="Driver={ODBC Driver 18 for SQL Server};\
 Server=127.0.0.1,1433;Database=master;UID=sa;PWD=DbParity!Passw0rd;\
 TrustServerCertificate=yes" pytest tests/test_mssql_integration.py
@@ -22,7 +22,7 @@ from dbparity.demo import seed
 DSN = os.environ.get("DBPARITY_MSSQL_DSN")
 
 pytestmark = pytest.mark.skipif(
-    not DSN, reason="DBPARITY_MSSQL_DSN не задан — нужен живой SQL Server")
+    not DSN, reason="DBPARITY_MSSQL_DSN not set - requires a live SQL Server")
 
 
 @pytest.fixture()
@@ -32,9 +32,9 @@ def mssql_target():
     cur = conn.cursor()
     for t in ("customers", "orders", "products", "audit_new"):
         cur.execute(f"DROP TABLE IF EXISTS {t}")
-    # created_at — datetimeoffset: seed отдаёт ISO-строки с '+00:00',
-    # SQL Server парсит их неявно (формат с 'T' локале-независим),
-    # адаптер читает через output-конвертер как aware datetime
+    # created_at is datetimeoffset: seed emits ISO strings with '+00:00',
+    # SQL Server parses them implicitly (the 'T' format is locale-independent),
+    # the adapter reads them via an output converter as aware datetimes
     cur.execute("""
         CREATE TABLE customers (
             id int PRIMARY KEY, name nvarchar(200), email nvarchar(200),
@@ -64,13 +64,13 @@ def mssql_target():
          for p in seed.product_rows()])
     cur.executemany("INSERT INTO audit_new VALUES (?,?)",
                     [(i, f"migrated batch {i}") for i in range(1, 11)])
-    # закрываем ДО yield: engine.run() откроет свои соединения
+    # close BEFORE yield: engine.run() opens its own connections
     conn.close()
     yield
 
 
 def test_sqlite_source_to_live_mssql(mssql_target, tmp_path):
-    demo_cfg = seed.build_demo(tmp_path)          # sqlite-источник («Oracle»)
+    demo_cfg = seed.build_demo(tmp_path)          # sqlite source ("Oracle" stand-in)
     cfg = Config(
         source=demo_cfg.source,
         target=EndpointConfig(
@@ -81,13 +81,13 @@ def test_sqlite_source_to_live_mssql(mssql_target, tmp_path):
     run = engine.run(cfg)
     by = {t.table: t for t in run.tables}
 
-    # те же ожидаемые счётчики, что и в sqlite-демо
+    # the same expected counters as in the sqlite demo
     for key, exp in seed.EXPECTED["customers"].items():
         assert getattr(by["customers"], key) == exp, f"customers.{key}"
     for key, exp in seed.EXPECTED["orders"].items():
         assert getattr(by["orders"], key) == exp, f"orders.{key}"
-    # у error-таблицы total_diffs тоже 0 — проверяем error и src_rows,
-    # чтобы hash-путь (products в auto-стратегии) не прятал падение
+    # an errored table also has total_diffs == 0 - check error and src_rows
+    # so the hash path (products under the auto strategy) cannot hide a failure
     assert by["products"].error is None, by["products"].error
     assert by["products"].total_diffs == 0
     assert by["products"].src_rows == 300
@@ -95,17 +95,17 @@ def test_sqlite_source_to_live_mssql(mssql_target, tmp_path):
     assert run.tables_only_in_source == ["legacy_log"]
     assert run.tables_only_in_target == ["audit_new"]
 
-    # смена типов (real→decimal, int→bit) видна в схеме…
+    # type changes (real->decimal, int->bit) are visible in the schema...
     sd = {d.table: d for d in run.schema_diffs}
     assert "customers" in sd
     changed = {c["column"] for c in sd["customers"].type_changes}
     assert "is_active" in changed
-    # …но ложных расхождений ДАННЫХ не создаёт (проверено счётчиками выше)
+    # ...but produce no false DATA diffs (verified by the counters above)
     assert not run.equivalent
 
 
 def test_hash_mode_sqlite_to_live_mssql(tmp_path):
-    """Кросс-движковые сегментные хэши: sqlite-канонизация == MSSQL-срез нулей."""
+    """Cross-engine segment hashes: sqlite canonicalization == MSSQL zero trimming."""
     pyodbc = pytest.importorskip("pyodbc")
     n = 3000
     rows = [(i, f"item {i}", 100 if i % 10 == 0 else i % 47,
@@ -122,8 +122,8 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
     ms = pyodbc.connect(DSN, autocommit=True)
     cur = ms.cursor()
     cur.execute("DROP TABLE IF EXISTS hnums")
-    # qty decimal(12,2): 100 хранится как 100.00 — срез хвостовых нулей
-    # обязан свести к '100' и совпасть с канонизацией sqlite
+    # qty decimal(12,2): 100 is stored as 100.00 - trailing-zero trimming
+    # must reduce it to '100' and match the sqlite canonicalization
     cur.execute("CREATE TABLE hnums (id int PRIMARY KEY, name varchar(100),"
                 " qty decimal(12,2), price decimal(12,2))")
     dst_rows = []
@@ -137,9 +137,9 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
     cur.executemany("INSERT INTO hnums VALUES (?,?,?,?)", dst_rows)
     ms.close()
 
-    # Санити-чек ДО прогона: таблица истинности видимости DDL по всем
-    # комбинациям (autocommit × стиль имени) — CI ловил 42S02 только на
-    # сессиях адаптера, и матрица однозначно называет виновную комбинацию.
+    # Sanity check BEFORE the run: a DDL-visibility truth table across all
+    # combinations (autocommit x name style) - CI used to hit 42S02 only on
+    # the adapter's sessions, and the matrix names the guilty combination.
     import time as _time
     combos, db = {}, None
     for _ in range(20):
@@ -162,7 +162,7 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
             break
         _time.sleep(0.5)
     assert all(v == n for v in combos.values()), (
-        f"видимость seed по комбинациям (DB_NAME()={db!r}): {combos}")
+        f"seed visibility matrix (DB_NAME()={db!r}): {combos}")
 
     cfg = Config(
         source=EndpointConfig("sqlite", "src", {"path": str(src_p)}),
@@ -170,18 +170,18 @@ def test_hash_mode_sqlite_to_live_mssql(tmp_path):
                               options={"dsn": DSN}),
         strategy="hash",
         hash_leaf_rows=256,
-        retry_attempts=2,        # страховка от транзиентов первой сессии
+        retry_attempts=2,        # a safeguard against first-session transients
         retry_backoff_s=0.5,
     )
     run = engine.run(cfg)
     t = run.tables[0]
-    # самодиагностика: при падении T-SQL или неэлигибельности причина
-    # лежит в error/warnings — выводим её в сообщении assert
-    assert t.error is None, f"таблица упала: {t.error}"
+    # self-diagnostics: if T-SQL fails or the table is ineligible, the cause
+    # is in error/warnings - surface it in the assert message
+    assert t.error is None, f"table failed: {t.error}"
     assert t.mode == "hash", f"mode={t.mode}; warnings={t.warnings}"
     assert t.mismatched == 2
     assert t.missing_in_target == 0 and t.extra_in_target == 0
     assert t.matched == n - 2
-    # большинство строк зачтено агрегатами, без передачи по сети
+    # most rows are settled by aggregates, with no network transfer
     assert t.rows_hash_matched > n * 0.7
     assert t.rows_streamed < n

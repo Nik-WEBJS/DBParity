@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru" data-bs-theme="light">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>DBParity — отчёт о сверке данных</title>
+  <title>DBParity — data comparison report</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -22,10 +22,10 @@
         <span class="badge bg-blue text-white me-2">DB</span>Parity
       </h1>
       <div class="navbar-nav flex-row order-md-last align-items-center gap-2">
-        <span class="badge bg-azure-lt">Oracle PROD (эмуляция)</span>
+        <span class="badge bg-azure-lt">Oracle PROD (emulated)</span>
         <span class="text-secondary">→</span>
         <span class="badge bg-indigo-lt">PostgreSQL NEW</span>
-        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Тема</button>
+        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Theme</button>
       </div>
     </div>
   </header>
@@ -39,8 +39,8 @@
         <div class="alert alert-danger" role="alert">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-              <h2 class="alert-heading mb-1">НЕ ЭКВИВАЛЕНТНО</h2>
-              <div>Обнаружено расхождений: <b>12</b>, есть различия структуры. Мигрировать без разбора причин небезопасно.</div>
+              <h2 class="alert-heading mb-1">NOT EQUIVALENT</h2>
+              <div>Found <b>12</b> differences, schema differs. Migrating without investigating the causes is unsafe.</div>
             </div>
             <div class="verdict-pct">99.85%</div>
           </div>
@@ -51,26 +51,26 @@
         <div class="row row-deck row-cards mb-3">
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Таблиц проверено</div>
+              <div class="subheader">Tables checked</div>
               <div class="h1 mb-0">3
                 <span class="fs-4 text-secondary">/ OK: 1</span></div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Строк сверено (источник)</div>
+              <div class="subheader">Rows compared (source)</div>
               <div class="h1 mb-0">6 500</div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Расхождений</div>
+              <div class="subheader">Differences</div>
               <div class="h1 mb-0 text-danger">12</div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Совпадение</div>
+              <div class="subheader">Match</div>
               <div class="h1 mb-0">99.85%</div>
               <div class="progress progress-sm mt-2">
                 <div class="progress-bar bg-success" style="width: 99.8462%"></div>
@@ -83,13 +83,13 @@
         <div class="row row-deck row-cards mb-3">
           <div class="col-lg-5">
             <div class="card"><div class="card-body">
-              <h3 class="card-title">Итог по строкам</h3>
+              <h3 class="card-title">Row totals</h3>
               <div class="chart-box"><canvas id="donut"></canvas></div>
             </div></div>
           </div>
           <div class="col-lg-7">
             <div class="card"><div class="card-body">
-              <h3 class="card-title">Расхождения по таблицам</h3>
+              <h3 class="card-title">Differences by table</h3>
               <div class="chart-box"><canvas id="bars"></canvas></div>
             </div></div>
           </div>
@@ -98,22 +98,22 @@
         
         
         <div class="card mb-3 border-warning">
-          <div class="card-header"><h3 class="card-title">Различия структуры</h3></div>
+          <div class="card-header"><h3 class="card-title">Schema differences</h3></div>
           <div class="card-body">
             
-            <p class="mb-2">Таблицы только в источнике:
+            <p class="mb-2">Tables only in source:
               <span class="badge bg-orange-lt me-1">legacy_log</span>
             </p>
             
             
-            <p class="mb-2">Таблицы только в приёмнике:
+            <p class="mb-2">Tables only in target:
               <span class="badge bg-yellow-lt me-1">audit_new</span>
             </p>
             
             
             <div class="mb-2">
               <b>orders</b>:
-               колонок нет в приёмнике:
+               columns missing in target:
                 <code>discount</code>.
               
               
@@ -132,37 +132,37 @@
               <span class="text-secondary ms-2">PK: id</span>
               
             </h3>
-            <span class="badge bg-danger text-white">9 расхожд.</span>
+            <span class="badge bg-danger text-white">9 diffs</span>
           </div>
           <div class="card-body">
             
             
             <div class="datagrid mb-2">
-              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (source)</div>
                 <div class="datagrid-content">1 200</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (target)</div>
                 <div class="datagrid-content">1 199</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+              <div class="datagrid-item"><div class="datagrid-title">Matched</div>
                 <div class="datagrid-content text-success">1 193</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+              <div class="datagrid-item"><div class="datagrid-title">Value mismatches</div>
                 <div class="datagrid-content text-danger">4</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Missing in target</div>
                 <div class="datagrid-content text-danger">3</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Extra in target</div>
                 <div class="datagrid-content text-danger">2</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">Duplicate PKs</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL PKs</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Время</div>
-                <div class="datagrid-content">0.009 c</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Time</div>
+                <div class="datagrid-content">0.009 s</div></div>
               
             </div>
             <div class="progress progress-sm mb-3">
               <div class="progress-bar bg-success" style="width: 99.4167%"></div>
             </div>
             
-            <p class="mb-2">Проблемные колонки:
+            <p class="mb-2">Problem columns:
               
                 <span class="badge bg-red-lt me-1">name: 1</span>
               
@@ -176,15 +176,15 @@
             
             
             <details>
-              <summary class="text-primary mb-2">Примеры расхождений (9)</summary>
+              <summary class="text-primary mb-2">Sample differences (9)</summary>
               <div class="table-responsive">
                 <table class="table table-sm table-vcenter">
-                  <thead><tr><th>Тип</th><th>PK</th><th>Детали (источник → приёмник)</th></tr></thead>
+                  <thead><tr><th>Type</th><th>PK</th><th>Details (source → target)</th></tr></thead>
                   <tbody>
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>10</code></td>
@@ -192,8 +192,8 @@
                         
                           
                             <div><span class="badge bg-azure-lt">name</span>
-                              <code class="diff-src">Алексей Петрова</code> →
-                              <code class="diff-dst">Алексей Петрова (переименован)</code></div>
+                              <code class="diff-src">Alexey Petrova</code> →
+                              <code class="diff-dst">Alexey Petrova (renamed)</code></div>
                           
                         
                       </td>
@@ -201,7 +201,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>20</code></td>
@@ -218,7 +218,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>30</code></td>
@@ -235,7 +235,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>40</code></td>
@@ -252,7 +252,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-orange-lt">нет в приёмнике</span>
+                        <span class="badge bg-orange-lt">missing in target</span>
                         
                       </td>
                       <td><code>101</code></td>
@@ -263,7 +263,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-orange-lt">нет в приёмнике</span>
+                        <span class="badge bg-orange-lt">missing in target</span>
                         
                       </td>
                       <td><code>102</code></td>
@@ -274,7 +274,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-orange-lt">нет в приёмнике</span>
+                        <span class="badge bg-orange-lt">missing in target</span>
                         
                       </td>
                       <td><code>103</code></td>
@@ -285,7 +285,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-yellow-lt">лишняя</span>
+                        <span class="badge bg-yellow-lt">extra</span>
                         
                       </td>
                       <td><code>2001</code></td>
@@ -296,7 +296,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-yellow-lt">лишняя</span>
+                        <span class="badge bg-yellow-lt">extra</span>
                         
                       </td>
                       <td><code>2002</code></td>
@@ -320,37 +320,37 @@
               <span class="text-secondary ms-2">PK: id</span>
               
             </h3>
-            <span class="badge bg-danger text-white">3 расхожд.</span>
+            <span class="badge bg-danger text-white">3 diffs</span>
           </div>
           <div class="card-body">
             
             
             <div class="datagrid mb-2">
-              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (source)</div>
                 <div class="datagrid-content">5 000</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (target)</div>
                 <div class="datagrid-content">5 000</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+              <div class="datagrid-item"><div class="datagrid-title">Matched</div>
                 <div class="datagrid-content text-success">4 997</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+              <div class="datagrid-item"><div class="datagrid-title">Value mismatches</div>
                 <div class="datagrid-content text-danger">3</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Missing in target</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Extra in target</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">Duplicate PKs</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL PKs</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Время</div>
-                <div class="datagrid-content">0.027 c</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Time</div>
+                <div class="datagrid-content">0.027 s</div></div>
               
             </div>
             <div class="progress progress-sm mb-3">
               <div class="progress-bar bg-success" style="width: 99.94%"></div>
             </div>
             
-            <p class="mb-2">Проблемные колонки:
+            <p class="mb-2">Problem columns:
               
                 <span class="badge bg-red-lt me-1">amount: 2</span>
               
@@ -360,15 +360,15 @@
             
             
             <details>
-              <summary class="text-primary mb-2">Примеры расхождений (3)</summary>
+              <summary class="text-primary mb-2">Sample differences (3)</summary>
               <div class="table-responsive">
                 <table class="table table-sm table-vcenter">
-                  <thead><tr><th>Тип</th><th>PK</th><th>Детали (источник → приёмник)</th></tr></thead>
+                  <thead><tr><th>Type</th><th>PK</th><th>Details (source → target)</th></tr></thead>
                   <tbody>
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>500</code></td>
@@ -385,7 +385,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>1500</code></td>
@@ -402,7 +402,7 @@
                   
                     <tr>
                       <td>
-                        <span class="badge bg-red-lt">значения</span>
+                        <span class="badge bg-red-lt">values</span>
                         
                       </td>
                       <td><code>2500</code></td>
@@ -439,24 +439,24 @@
             
             
             <div class="datagrid mb-2">
-              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (source)</div>
                 <div class="datagrid-content">300</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (target)</div>
                 <div class="datagrid-content">300</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+              <div class="datagrid-item"><div class="datagrid-title">Matched</div>
                 <div class="datagrid-content text-success">300</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+              <div class="datagrid-item"><div class="datagrid-title">Value mismatches</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Missing in target</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Extra in target</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">Duplicate PKs</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL PKs</div>
                 <div class="datagrid-content ">0</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Время</div>
-                <div class="datagrid-content">0.001 c</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Time</div>
+                <div class="datagrid-content">0.001 s</div></div>
               
             </div>
             <div class="progress progress-sm mb-3">
@@ -471,11 +471,11 @@
 
         <footer class="footer footer-transparent d-print-none py-3">
           <div class="text-secondary">
-            Сгенерировано DBParity v0.8.0 · 2026-07-03 18:19 UTC · схема отчёта v1 ·
-            длительность прогона 0.04 с ·
-            правила: rtrim=True,
+            Generated by DBParity v0.8.0 · 2026-07-04 06:01 UTC · report schema v1 ·
+            run duration 0.04 s ·
+            rules: rtrim=True,
             ε=1e-09,
-            маскирование=False
+            masking=False
           </div>
         </footer>
       </div>
@@ -484,7 +484,7 @@
 </div>
 
 <script>
-const CHART = {"diffs": [9, 3, 0], "donut": {"data": [6490, 7, 3, 2, 0], "labels": ["\u0421\u043e\u0432\u043f\u0430\u043b\u043e", "\u0420\u0430\u0437\u043b\u0438\u0447\u0438\u044f \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0439", "\u041d\u0435\u0442 \u0432 \u043f\u0440\u0438\u0451\u043c\u043d\u0438\u043a\u0435", "\u041b\u0438\u0448\u043d\u0438\u0435 \u0432 \u043f\u0440\u0438\u0451\u043c\u043d\u0438\u043a\u0435", "\u0414\u0443\u0431\u043b\u0438 PK"]}, "tables": ["customers", "orders", "products"]};
+const CHART = {"diffs": [9, 3, 0], "donut": {"data": [6490, 7, 3, 2, 0], "labels": ["Matched", "Value mismatches", "Missing in target", "Extra in target", "Duplicate PKs"]}, "tables": ["customers", "orders", "products"]};
 const PALETTE = ["#2fb344", "#d63939", "#f76707", "#f59f00", "#ae3ec9"];
 
 function toggleTheme() {
@@ -509,7 +509,7 @@ new Chart(document.getElementById("bars"), {
   type: "bar",
   data: {
     labels: CHART.tables,
-    datasets: [{ label: "Расхождения", data: CHART.diffs, backgroundColor: "#d63939" }]
+    datasets: [{ label: "Differences", data: CHART.diffs, backgroundColor: "#d63939" }]
   },
   options: {
     maintainAspectRatio: false,

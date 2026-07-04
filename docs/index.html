@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru" data-bs-theme="light">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>DBParity — верификатор миграций БД</title>
+  <title>DBParity — database migration verifier</title>
   <meta name="description" content="Prove your database migration didn't lose or corrupt a single row."/>
   <link rel="icon" href="favicon.ico"/>
   <link rel="apple-touch-icon" href="icon-256.png"/>
@@ -25,14 +25,14 @@
                class="mb-3" style="border-radius: 23px"/>
           <h1 class="display-5 mb-2">DBParity</h1>
           <p class="text-secondary fs-3 mb-1">
-            Докажите, что при миграции БД не потерялась и не исказилась ни одна строка
-          </p>
-          <p class="text-secondary mb-4">
             Prove your database migration didn't lose or corrupt a single row
+          </p>
+          <p class="text-secondary mb-4" lang="ru">
+            &#1044;&#1086;&#1082;&#1072;&#1078;&#1080;&#1090;&#1077;, &#1095;&#1090;&#1086; &#1087;&#1088;&#1080; &#1084;&#1080;&#1075;&#1088;&#1072;&#1094;&#1080;&#1080; &#1041;&#1044; &#1085;&#1077; &#1087;&#1086;&#1090;&#1077;&#1088;&#1103;&#1083;&#1072;&#1089;&#1100; &#1080; &#1085;&#1077; &#1080;&#1089;&#1082;&#1072;&#1079;&#1080;&#1083;&#1072;&#1089;&#1100; &#1085;&#1080; &#1086;&#1076;&#1085;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1072;
           </p>
           <div class="d-flex justify-content-center gap-2 flex-wrap">
             <a class="btn btn-primary btn-lg" href="demo_report.html">
-              📊 Живой демо-отчёт
+              📊 Live demo report
             </a>
             <a class="btn btn-outline-secondary btn-lg"
                href="https://github.com/Nik-WEBJS/DBParity">
@@ -45,10 +45,10 @@
           <div class="col-md-4">
             <a class="card card-link" href="demo_report.html">
               <div class="card-body">
-                <h3 class="card-title">Демо-отчёт</h3>
+                <h3 class="card-title">Live demo report</h3>
                 <p class="text-secondary mb-0">
-                  Что интегратор кладёт заказчику на стол: вердикт, графики,
-                  примеры расхождений. Oracle→PostgreSQL, 12 подложенных ошибок.
+                  What an integrator puts on the customer's desk: the verdict,
+                  charts, sample differences. Oracle→PostgreSQL, 12 planted errors.
                 </p>
               </div>
             </a>
@@ -57,10 +57,10 @@
             <a class="card card-link"
                href="https://github.com/Nik-WEBJS/DBParity/blob/main/docs/config-reference.md">
               <div class="card-body">
-                <h3 class="card-title">Справочник конфига</h3>
+                <h3 class="card-title">Config reference</h3>
                 <p class="text-secondary mb-0">
-                  Все ключи config.yaml: эндпоинты, правила нормализации,
-                  hash-режим, инкременты, чекпоинты, ретраи.
+                  Every config.yaml key: endpoints, normalization rules,
+                  hash mode, incremental runs, checkpoints, retries.
                 </p>
               </div>
             </a>
@@ -69,10 +69,10 @@
             <a class="card card-link"
                href="https://github.com/Nik-WEBJS/DBParity/blob/main/docs/report-format.md">
               <div class="card-body">
-                <h3 class="card-title">Формат JSON-отчёта</h3>
+                <h3 class="card-title">JSON report format</h3>
                 <p class="text-secondary mb-0">
-                  Замороженная схема v1 с semver-гарантиями — стройте свою
-                  автоматизацию поверх отчётов без страха поломок.
+                  A frozen v1 schema with semver guarantees — build your
+                  automation on top of the reports without fear of breakage.
                 </p>
               </div>
             </a>

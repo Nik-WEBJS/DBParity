@@ -1,14 +1,14 @@
-"""Hash-режим: бакетные DB-side агрегаты за один скан.
+"""Hash mode: bucketed DB-side aggregates in a single scan.
 
-Идея: обе БД за ОДИН проход считают агрегаты канонических md5-хэшей по
-бакетам PK (GROUP BY floor((pk-lo)/step)). Совпавшие бакеты признаются
-эквивалентными без передачи строк; разошедшиеся детализируются потоковым
-merge с полной клиентской нормализацией. Итог: 1 hash-скан на сторону +
-передача только «подозрительных» диапазонов.
+Idea: both databases compute aggregates of canonical md5 hashes over PK
+buckets in ONE pass (GROUP BY floor((pk-lo)/step)). Matching buckets are
+declared equivalent without transferring rows; diverging ones are detailed
+via streaming merge with full client-side normalization. Result: 1 hash
+scan per side + transfer of only the "suspicious" ranges.
 
-Свойство корректности: несовершенная канонизация эквивалентных значений
-приводит лишь к лишней детализации (медленнее), но никогда — к ложному
-пропуску. Ложный пропуск потребовал бы коллизии md5-агрегатов.
+Correctness property: imperfect canonicalization of equivalent values only
+leads to extra detailing (slower), but never to a false pass. A false pass
+would require an md5 aggregate collision.
 """
 from __future__ import annotations
 
@@ -25,17 +25,17 @@ def digest_eligible(config, src, dst, pk, common_cols,
     if config.strategy == "stream":
         return False, "strategy=stream"
     if not (src.supports_digest and dst.supports_digest):
-        return False, "адаптер без digest-API"
+        return False, "adapter lacks digest API"
     if len(pk) != 1:
-        return False, "составной PK"
+        return False, "composite PK"
     p = pk[0]
     if src_log.get(p) != "number" or dst_log.get(p) != "number":
-        return False, "нечисловой PK"
+        return False, "non-numeric PK"
     bad = [c for c in common_cols
            if src_log.get(c) not in _HASHABLE_LOGICALS
            or dst_log.get(c) not in _HASHABLE_LOGICALS]
     if bad:
-        return False, f"типы колонок вне hash-набора: {', '.join(bad[:4])}"
+        return False, f"column types outside the hash set: {', '.join(bad[:4])}"
     return True, ""
 
 
@@ -75,7 +75,7 @@ def hash_compare_table(
     dst_cols_actual = [dst_names[c] for c in common_cols]
     src_pk_actual, dst_pk_actual = src_names[pk_col], dst_names[pk_col]
 
-    # NULL в PK: WHERE pk >= lo исключает их из сегментов — считаем отдельно
+    # NULL in PK: WHERE pk >= lo excludes them from segments — count separately
     res.null_pk = (src.null_pk_count(src_table, src_pk_actual)
                    + dst.null_pk_count(dst_table, dst_pk_actual))
 
@@ -83,7 +83,7 @@ def hash_compare_table(
     lo_d, hi_d = dst.pk_bounds(dst_table, dst_pk_actual)
     bounds = [b for b in (lo_s, lo_d) if b is not None]
     tops = [b for b in (hi_s, hi_d) if b is not None]
-    if not bounds:          # обе стороны пусты (кроме возможных NULL-PK)
+    if not bounds:          # both sides are empty (apart from possible NULL PKs)
         return res
 
     def report() -> None:

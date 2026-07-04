@@ -1,4 +1,4 @@
-"""PostgreSQL-адаптер (psycopg3, server-side cursor)."""
+"""PostgreSQL adapter (psycopg3, server-side cursor)."""
 from __future__ import annotations
 
 from typing import Iterator, List, Sequence
@@ -36,7 +36,7 @@ class PostgresAdapter(Adapter):
 
     def __init__(self, endpoint):
         if psycopg is None:  # pragma: no cover
-            raise RuntimeError("Для postgres установите зависимость: pip install 'psycopg[binary]'")
+            raise RuntimeError("postgres support requires: pip install 'psycopg[binary]'")
         super().__init__(endpoint)
         o = endpoint.options
         dsn = o.get("dsn")
@@ -50,15 +50,15 @@ class PostgresAdapter(Adapter):
             }
             dsn = " ".join(f"{k}={v}" for k, v in parts.items() if v is not None)
         self.schema = o.get("schema", "public")
-        # server_side=False — обычный курсор (для окружений без DECLARE CURSOR)
+        # server_side=False — a regular cursor (for environments without DECLARE CURSOR)
         self.server_side = bool(o.get("server_side", True))
         self.conn = psycopg.connect(dsn)
-        # prepare_threshold: null в YAML отключает авто-prepare (нужно для
-        # окружений с общей сессией вроде PGlite/пулеров в transaction-режиме)
+        # prepare_threshold: null in YAML disables auto-prepare (needed for
+        # shared-session environments like PGlite/poolers in transaction mode)
         if "prepare_threshold" in o:
             self.conn.prepare_threshold = o["prepare_threshold"]
 
-    def list_tables(self) -> List[str]:  # pragma: no cover — нет сервера в CI
+    def list_tables(self) -> List[str]:  # pragma: no cover — no server in CI
         with self.conn.cursor() as cur:
             cur.execute(
                 "SELECT table_name FROM information_schema.tables "
@@ -93,18 +93,18 @@ class PostgresAdapter(Adapter):
     def _build_stream_query(schema: str, table: str, columns: Sequence[str],
                             order_by: Sequence[str], pk_range=None,
                             order_logicals: Sequence[str] | None = None):
-        """(запрос psycopg.sql, params) для stream_rows.
+        """(psycopg.sql query, params) for stream_rows.
 
-        Вынесено в статический метод: строится без соединения и потому
-        тестируется юнитами. Текстовые order_by-колонки сортируются в
-        COLLATE "C" (бинарно); для нетекстовых COLLATE не добавляется —
-        на них он вызвал бы ошибку PostgreSQL.
+        Extracted into a static method: it is built without a connection
+        and is therefore unit-testable. Text order_by columns are sorted
+        with COLLATE "C" (binary); for non-text ones COLLATE is not added —
+        on them it would raise a PostgreSQL error.
         """
         where = _sql.SQL("")
         params = ()
         if pk_range is not None:
             col, lo, hi = pk_range
-            if hi is None:      # открытый диапазон — для resume с watermark
+            if hi is None:      # open range — for resume with a watermark
                 where = _sql.SQL(" WHERE {c} >= %s").format(c=_sql.Identifier(col))
                 params = (lo,)
             else:
@@ -158,8 +158,8 @@ class PostgresAdapter(Adapter):
     def _canon(self, col: str, logical: str, rtrim: bool) -> str:  # pragma: no cover
         q = self._ident(col)
         if logical == "number":
-            # trim_scale (PG13+): 100.00 → '100', 1.50 → '1.5' — совпадает
-            # с канонизацией sqlite/Oracle
+            # trim_scale (PG13+): 100.00 → '100', 1.50 → '1.5' — matches
+            # the sqlite/Oracle canonicalization
             return (f"CASE WHEN {q} IS NULL THEN 'N' "
                     f"ELSE trim_scale({q}::numeric)::text END")
         if logical == "bool":

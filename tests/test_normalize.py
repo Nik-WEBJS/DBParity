@@ -1,4 +1,4 @@
-"""Юнит-тесты нормализации: каждая «ловушка миграции» из PLAN.md §3."""
+"""Unit tests for normalization: every "migration trap" from PLAN.md section 3."""
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -43,7 +43,7 @@ def test_yn_as_bool():
     nz = n(NormalizeRules(yn_as_bool=True))
     assert nz.normalize("Y") == nz.normalize(True)
     assert nz.normalize("n") == nz.normalize(False)
-    # без правила Y остаётся строкой
+    # without the rule, Y stays a plain string
     assert n().normalize("Y") == "Y"
 
 
@@ -71,9 +71,9 @@ def test_rtrim():
 
 
 def test_unicode_nfc():
-    # е + комбинируемая точка сверху (NFD) == ё (NFC)
+    # "e" + combining acute accent (NFD) == precomposed e-acute (NFC)
     nz = n()
-    assert nz.normalize("ё") == nz.normalize("ё")
+    assert nz.normalize("é") == nz.normalize("é")
 
 
 def test_bytes_md5():

@@ -1,4 +1,4 @@
-"""Юнит-тесты merge-сравнения: все категории расхождений."""
+"""Unit tests for the merge comparison: every diff category."""
 from dbparity.core.compare import compare_table
 from dbparity.core.models import DiffKind
 from dbparity.core.normalize import Normalizer
@@ -37,7 +37,7 @@ def test_mismatch_with_column_details():
 def test_duplicate_pk():
     r = cmp([(1, "a"), (1, "a2"), (2, "b")], [(1, "a"), (2, "b")])
     assert r.duplicate_pk == 1
-    assert r.missing_in_target == 1   # непарная копия дубля
+    assert r.missing_in_target == 1   # the unpaired copy of the duplicate
     assert r.matched == 2
 
 
@@ -56,7 +56,7 @@ def test_sample_limit():
 def test_mask_values():
     r = cmp([(1, "secret")], [(1, "other")], mask_values=True)
     assert r.samples[0].columns == {"v": ("•••", "•••")}
-    # PK не маскируется
+    # the PK is not masked
     assert r.samples[0].pk == ("1",)
 
 
@@ -66,7 +66,7 @@ def test_empty_both():
 
 
 def test_null_pk_isolated():
-    """Строки с NULL в PK не ломают merge и попадают в отдельную категорию."""
+    """Rows with a NULL PK do not break the merge and get their own category."""
     r = cmp([(None, "x"), (1, "a")], [(1, "a"), (None, "y")])
     assert r.null_pk == 2
     assert r.matched == 1
@@ -76,7 +76,7 @@ def test_null_pk_isolated():
 
 
 def test_fast_path_parity_with_generic():
-    """Fast-path (пер-колоночные нормализаторы) даёт тот же результат, что generic."""
+    """Fast-path (per-column normalizers) yields the same result as generic."""
     src = [(1, "a", 1.5, ""), (2, "b", 2.0, "x"), (4, "d", 4.0, None)]
     dst = [(1, "a", 1.5, ""), (2, "B", 2.0000000001, "x"), (3, "c", 3.0, "y")]
     cols = ["id", "name", "price", "note"]
@@ -89,6 +89,6 @@ def test_fast_path_parity_with_generic():
                  "extra_in_target", "duplicate_pk", "column_mismatch_counts",
                  "src_rows", "dst_rows"):
         assert getattr(slow, attr) == getattr(fast, attr), attr
-    # sanity: epsilon сработал и в fast-path (price не флагован)
+    # sanity: epsilon applied in the fast-path too (price is not flagged)
     assert "price" not in fast.column_mismatch_counts
     assert fast.column_mismatch_counts == {"name": 1}

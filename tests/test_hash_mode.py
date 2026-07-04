@@ -1,4 +1,4 @@
-"""Hash-режим: паритет со stream, учёт сегментов, fallback, NULL-PK."""
+"""Hash mode: parity with stream, segment accounting, fallback, NULL PK."""
 import dataclasses
 import sqlite3
 
@@ -10,7 +10,7 @@ N = 20000
 
 
 def _build_pair(tmp_path):
-    """Только числа и текст (hash-eligible), детерминированные расхождения."""
+    """Numbers and text only (hash-eligible), deterministic diffs."""
     src_p, dst_p = tmp_path / "hs.db", tmp_path / "hd.db"
     for path, mutate in ((src_p, False), (dst_p, True)):
         conn = sqlite3.connect(path)
@@ -50,7 +50,7 @@ def test_hash_parity_with_stream(tmp_path):
     assert h.column_mismatch_counts == s.column_mismatch_counts
     assert h.mismatched == 2 and h.missing_in_target == 3 \
         and h.extra_in_target == 1
-    # подавляющая часть строк зачтена по хэшу без передачи
+    # the vast majority of rows are settled by hash without transfer
     assert h.rows_hash_matched > 12000
     assert h.rows_streamed < 10000
     assert h.segments_matched > 0 and h.segments_streamed > 0
@@ -58,24 +58,24 @@ def test_hash_parity_with_stream(tmp_path):
 
 def test_auto_selects_hash_when_eligible(tmp_path):
     make_cfg = _build_pair(tmp_path)
-    run = engine.run(make_cfg())            # strategy=auto по умолчанию
+    run = engine.run(make_cfg())            # strategy=auto by default
     assert run.tables[0].mode == "hash"
 
 
 def test_hash_fallback_on_unsupported_types(tmp_path):
-    """demo-таблицы содержат float/datetime → авто-fallback в stream."""
+    """Demo tables contain float/datetime -> automatic fallback to stream."""
     cfg = dataclasses.replace(build_demo(tmp_path), strategy="hash")
     run = engine.run(cfg)
     assert all(t.mode == "stream" for t in run.tables)
     warn = " ".join(w for t in run.tables for w in t.warnings)
-    assert "hash-режим недоступен" in warn
-    by = {t.table: t for t in run.tables}   # счётчики не пострадали
+    assert "hash mode unavailable" in warn
+    by = {t.table: t for t in run.tables}   # counters unaffected
     for key, exp in EXPECTED["customers"].items():
         assert getattr(by["customers"], key) == exp, key
 
 
 def test_hash_null_pk(tmp_path):
-    # 'INT PRIMARY KEY' (не INTEGER) в sqlite допускает NULL в PK
+    # 'INT PRIMARY KEY' (not INTEGER) in sqlite allows NULL in the PK
     src_p, dst_p = tmp_path / "ns.db", tmp_path / "nd.db"
     for path, rows in ((src_p, [(None, "x"), (1, "a"), (2, "b")]),
                        (dst_p, [(1, "a"), (2, "b")])):

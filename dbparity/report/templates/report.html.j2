@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru" data-bs-theme="light">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>DBParity — отчёт о сверке данных</title>
+  <title>DBParity — data comparison report</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -25,7 +25,7 @@
         <span class="badge bg-azure-lt">{{ run.source_label }}</span>
         <span class="text-secondary">→</span>
         <span class="badge bg-indigo-lt">{{ run.target_label }}</span>
-        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Тема</button>
+        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Theme</button>
       </div>
     </div>
   </header>
@@ -34,13 +34,13 @@
     <div class="page-body">
       <div class="container-xl">
 
-        {# ---------- Вердикт ---------- #}
+        {# ---------- Verdict ---------- #}
         {% if run.equivalent %}
         <div class="alert alert-success" role="alert">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-              <h2 class="alert-heading mb-1">ЭКВИВАЛЕНТНО</h2>
-              <div>Расхождений между источником и приёмником не обнаружено.</div>
+              <h2 class="alert-heading mb-1">EQUIVALENT</h2>
+              <div>No differences between source and target.</div>
             </div>
             <div class="verdict-pct">{{ "%.2f" | format(totals.match_pct) }}%</div>
           </div>
@@ -49,8 +49,8 @@
         <div class="alert alert-danger" role="alert">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-              <h2 class="alert-heading mb-1">НЕ ЭКВИВАЛЕНТНО</h2>
-              <div>Обнаружено расхождений: <b>{{ totals.total_diffs | num }}</b>{% if not run.schema_clean %}, есть различия структуры{% endif %}. Мигрировать без разбора причин небезопасно.</div>
+              <h2 class="alert-heading mb-1">NOT EQUIVALENT</h2>
+              <div>Found <b>{{ totals.total_diffs | num }}</b> differences{% if not run.schema_clean %}, schema differs{% endif %}. Migrating without investigating the causes is unsafe.</div>
             </div>
             <div class="verdict-pct">{{ "%.2f" | format(totals.match_pct) }}%</div>
           </div>
@@ -61,26 +61,26 @@
         <div class="row row-deck row-cards mb-3">
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Таблиц проверено</div>
+              <div class="subheader">Tables checked</div>
               <div class="h1 mb-0">{{ totals.tables_total }}
                 <span class="fs-4 text-secondary">/ OK: {{ totals.tables_ok }}</span></div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Строк сверено (источник)</div>
+              <div class="subheader">Rows compared (source)</div>
               <div class="h1 mb-0">{{ totals.src_rows | num }}</div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Расхождений</div>
+              <div class="subheader">Differences</div>
               <div class="h1 mb-0 {{ 'text-danger' if totals.total_diffs else 'text-success' }}">{{ totals.total_diffs | num }}</div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Совпадение</div>
+              <div class="subheader">Match</div>
               <div class="h1 mb-0">{{ "%.2f" | format(totals.match_pct) }}%</div>
               <div class="progress progress-sm mt-2">
                 <div class="progress-bar bg-success" style="width: {{ totals.match_pct }}%"></div>
@@ -89,64 +89,64 @@
           </div>
         </div>
 
-        {# ---------- Графики ---------- #}
+        {# ---------- Charts ---------- #}
         <div class="row row-deck row-cards mb-3">
           <div class="col-lg-5">
             <div class="card"><div class="card-body">
-              <h3 class="card-title">Итог по строкам</h3>
+              <h3 class="card-title">Row totals</h3>
               <div class="chart-box"><canvas id="donut"></canvas></div>
             </div></div>
           </div>
           <div class="col-lg-7">
             <div class="card"><div class="card-body">
-              <h3 class="card-title">Расхождения по таблицам</h3>
+              <h3 class="card-title">Differences by table</h3>
               <div class="chart-box"><canvas id="bars"></canvas></div>
             </div></div>
           </div>
         </div>
 
-        {# ---------- Схема ---------- #}
+        {# ---------- Schema ---------- #}
         {% if not run.schema_clean %}
         <div class="card mb-3 border-warning">
-          <div class="card-header"><h3 class="card-title">Различия структуры</h3></div>
+          <div class="card-header"><h3 class="card-title">Schema differences</h3></div>
           <div class="card-body">
             {% if run.tables_only_in_source %}
-            <p class="mb-2">Таблицы только в источнике:
+            <p class="mb-2">Tables only in source:
               {% for t in run.tables_only_in_source %}<span class="badge bg-orange-lt me-1">{{ t }}</span>{% endfor %}
             </p>
             {% endif %}
             {% if run.tables_only_in_target %}
-            <p class="mb-2">Таблицы только в приёмнике:
+            <p class="mb-2">Tables only in target:
               {% for t in run.tables_only_in_target %}<span class="badge bg-yellow-lt me-1">{{ t }}</span>{% endfor %}
             </p>
             {% endif %}
             {% for d in run.schema_diffs %}
             <div class="mb-2">
               <b>{{ d.table }}</b>:
-              {% if d.missing_in_target %} колонок нет в приёмнике:
+              {% if d.missing_in_target %} columns missing in target:
                 {% for c in d.missing_in_target %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
-              {% if d.extra_in_target %} лишние колонки в приёмнике:
+              {% if d.extra_in_target %} extra columns in target:
                 {% for c in d.extra_in_target %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
-              {% if d.type_changes %} смена типов:
+              {% if d.type_changes %} type changes:
                 {% for tc in d.type_changes %}<code>{{ tc.column }}</code> {{ tc.source }} → {{ tc.target }}{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}
-              {% if d.pk_mismatch %} PK различается: {{ d.pk_mismatch.source | join(', ') }} → {{ d.pk_mismatch.target | join(', ') }}.{% endif %}
+              {% if d.pk_mismatch %} PK differs: {{ d.pk_mismatch.source | join(', ') }} → {{ d.pk_mismatch.target | join(', ') }}.{% endif %}
             </div>
             {% endfor %}
           </div>
         </div>
         {% endif %}
 
-        {# ---------- Таблицы ---------- #}
+        {# ---------- Tables ---------- #}
         {% for t in run.tables %}
         <div class="card mb-3">
           <div class="card-header d-flex align-items-center justify-content-between">
             <h3 class="card-title mb-0"><code>{{ t.table }}</code>
               <span class="text-secondary ms-2">PK: {{ t.pk | join(', ') if t.pk else '—' }}</span>
-              {% if t.mode == 'hash' %}<span class="badge bg-cyan-lt ms-2" title="Сегментные DB-side хэши">hash</span>{% endif %}
+              {% if t.mode == 'hash' %}<span class="badge bg-cyan-lt ms-2" title="DB-side segment hashes">hash</span>{% endif %}
             </h3>
             {% if t.status == 'ok' %}<span class="badge bg-success text-white">OK</span>
-            {% elif t.status == 'error' %}<span class="badge bg-warning text-white">ОШИБКА</span>
-            {% else %}<span class="badge bg-danger text-white">{{ t.total_diffs | num }} расхожд.</span>{% endif %}
+            {% elif t.status == 'error' %}<span class="badge bg-warning text-white">ERROR</span>
+            {% else %}<span class="badge bg-danger text-white">{{ t.total_diffs | num }} diffs</span>{% endif %}
           </div>
           <div class="card-body">
             {% if t.warnings %}
@@ -158,38 +158,38 @@
               <div class="text-warning">{{ t.error }}</div>
             {% else %}
             <div class="datagrid mb-2">
-              <div class="datagrid-item"><div class="datagrid-title">Строк (источник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (source)</div>
                 <div class="datagrid-content">{{ t.src_rows | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Строк (приёмник)</div>
+              <div class="datagrid-item"><div class="datagrid-title">Rows (target)</div>
                 <div class="datagrid-content">{{ t.dst_rows | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Совпало</div>
+              <div class="datagrid-item"><div class="datagrid-title">Matched</div>
                 <div class="datagrid-content text-success">{{ t.matched | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Различия значений</div>
+              <div class="datagrid-item"><div class="datagrid-title">Value mismatches</div>
                 <div class="datagrid-content {{ 'text-danger' if t.mismatched }}">{{ t.mismatched | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Нет в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Missing in target</div>
                 <div class="datagrid-content {{ 'text-danger' if t.missing_in_target }}">{{ t.missing_in_target | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Лишние в приёмнике</div>
+              <div class="datagrid-item"><div class="datagrid-title">Extra in target</div>
                 <div class="datagrid-content {{ 'text-danger' if t.extra_in_target }}">{{ t.extra_in_target | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Дубли PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">Duplicate PKs</div>
                 <div class="datagrid-content {{ 'text-danger' if t.duplicate_pk }}">{{ t.duplicate_pk | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">NULL в PK</div>
+              <div class="datagrid-item"><div class="datagrid-title">NULL PKs</div>
                 <div class="datagrid-content {{ 'text-danger' if t.null_pk }}">{{ t.null_pk | num }}</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Время</div>
-                <div class="datagrid-content">{{ t.duration_s }} c</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Time</div>
+                <div class="datagrid-content">{{ t.duration_s }} s</div></div>
               {% if t.mode == 'hash' %}
-              <div class="datagrid-item"><div class="datagrid-title">Зачтено по хэшу</div>
-                <div class="datagrid-content">{{ t.rows_hash_matched | num }} строк
-                  ({{ t.segments_matched }} сегм.)</div></div>
-              <div class="datagrid-item"><div class="datagrid-title">Детализировано</div>
-                <div class="datagrid-content">{{ t.rows_streamed | num }} строк
-                  ({{ t.segments_streamed }} сегм.)</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Credited by hash</div>
+                <div class="datagrid-content">{{ t.rows_hash_matched | num }} rows
+                  ({{ t.segments_matched }} segm.)</div></div>
+              <div class="datagrid-item"><div class="datagrid-title">Streamed detail</div>
+                <div class="datagrid-content">{{ t.rows_streamed | num }} rows
+                  ({{ t.segments_streamed }} segm.)</div></div>
               {% endif %}
             </div>
             <div class="progress progress-sm mb-3">
               <div class="progress-bar bg-success" style="width: {{ t.match_pct }}%"></div>
             </div>
             {% if t.column_mismatch_counts %}
-            <p class="mb-2">Проблемные колонки:
+            <p class="mb-2">Problem columns:
               {% for col, cnt in t.column_mismatch_counts | dictsort(by='value', reverse=true) %}
                 <span class="badge bg-red-lt me-1">{{ col }}: {{ cnt | num }}</span>
               {% endfor %}
@@ -197,18 +197,18 @@
             {% endif %}
             {% if t.samples %}
             <details>
-              <summary class="text-primary mb-2">Примеры расхождений ({{ t.samples | length }})</summary>
+              <summary class="text-primary mb-2">Sample differences ({{ t.samples | length }})</summary>
               <div class="table-responsive">
                 <table class="table table-sm table-vcenter">
-                  <thead><tr><th>Тип</th><th>PK</th><th>Детали (источник → приёмник)</th></tr></thead>
+                  <thead><tr><th>Type</th><th>PK</th><th>Details (source → target)</th></tr></thead>
                   <tbody>
                   {% for s in t.samples %}
                     <tr>
                       <td>
-                        {% if s.kind == 'mismatch' %}<span class="badge bg-red-lt">значения</span>
-                        {% elif s.kind == 'missing_in_target' %}<span class="badge bg-orange-lt">нет в приёмнике</span>
-                        {% elif s.kind == 'extra_in_target' %}<span class="badge bg-yellow-lt">лишняя</span>
-                        {% elif s.kind == 'duplicate_pk' %}<span class="badge bg-purple-lt">дубль PK</span>
+                        {% if s.kind == 'mismatch' %}<span class="badge bg-red-lt">values</span>
+                        {% elif s.kind == 'missing_in_target' %}<span class="badge bg-orange-lt">missing in target</span>
+                        {% elif s.kind == 'extra_in_target' %}<span class="badge bg-yellow-lt">extra</span>
+                        {% elif s.kind == 'duplicate_pk' %}<span class="badge bg-purple-lt">duplicate PK</span>
                         {% else %}<span class="badge bg-pink-lt">NULL PK</span>{% endif %}
                       </td>
                       <td><code>{{ s.pk | join(', ') }}</code></td>
@@ -235,11 +235,11 @@
 
         <footer class="footer footer-transparent d-print-none py-3">
           <div class="text-secondary">
-            Сгенерировано DBParity v{{ version }} · {{ generated }} ·
-            длительность прогона {{ ((run.finished_at - run.started_at).total_seconds()) | round(2) }} с ·
-            правила: rtrim={{ run.config_summary.rules.rtrim_strings }},
+            Generated by DBParity v{{ version }} · {{ generated }} ·
+            run duration {{ ((run.finished_at - run.started_at).total_seconds()) | round(2) }} s ·
+            rules: rtrim={{ run.config_summary.rules.rtrim_strings }},
             ε={{ run.config_summary.rules.float_epsilon }},
-            маскирование={{ run.config_summary.mask_values }}
+            masking={{ run.config_summary.mask_values }}
           </div>
         </footer>
       </div>
@@ -273,7 +273,7 @@ new Chart(document.getElementById("bars"), {
   type: "bar",
   data: {
     labels: CHART.tables,
-    datasets: [{ label: "Расхождения", data: CHART.diffs, backgroundColor: "#d63939" }]
+    datasets: [{ label: "Differences", data: CHART.diffs, backgroundColor: "#d63939" }]
   },
   options: {
     maintainAspectRatio: false,

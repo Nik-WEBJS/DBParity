@@ -1,26 +1,26 @@
-"""Инкрементальный режим (v0.5): стейт watermark'ов между прогонами.
+"""Incremental mode (v0.5): watermark state between runs.
 
-Сценарий dual-write переключений: после полной сверки нет смысла гонять
-миллионы строк заново — достаточно перепроверять строки, изменившиеся
-с прошлого прогона. Для каждой таблицы в конфиге задаётся
-watermark-колонка (`incremental: {orders: updated_at}`) — она существует
-в ОБЕИХ БД и монотонно растёт при изменении строки (timestamp или
-числовая версия). После успешной сверки таблицы движок фиксирует максимум
-этой колонки; следующий прогон фильтрует обе стороны условием
-`wm_col >= watermark` (граница включительно: строки, разделяющие максимум,
-перепроверяются — это осознанная страховка от записей «в ту же секунду»).
+The dual-write cutover scenario: after a full comparison there is no point
+re-scanning millions of rows — it is enough to re-check the rows that have
+changed since the previous run. For each table the config defines a
+watermark column (`incremental: {orders: updated_at}`) — it exists in
+BOTH databases and grows monotonically when a row changes (a timestamp or
+a numeric version). After a table compares successfully, the engine records
+the maximum of that column; the next run filters both sides with
+`wm_col >= watermark` (inclusive boundary: rows sharing the maximum are
+re-checked — a deliberate safeguard against "same second" writes).
 
-Стейт — JSON-файл рядом с рабочим каталогом (авто-имя
-`.dbparity_incr_<fp12>.json`), валиден только для того же конфига:
-отпечаток строится из core.checkpoint.config_fingerprint плюс сама карта
-incremental (смена watermark-колонки обесценивает старые значения).
-Запись атомарная (tmp + os.replace) и потокобезопасная (лок) — движок
-обновляет стейт из рабочих потоков при workers>1.
+The state is a JSON file next to the working directory (auto-name
+`.dbparity_incr_<fp12>.json`), valid only for the same config: the
+fingerprint is built from core.checkpoint.config_fingerprint plus the
+incremental map itself (changing the watermark column invalidates the old
+values). Writes are atomic (tmp + os.replace) and thread-safe (lock) —
+the engine updates the state from worker threads when workers>1.
 
-Сериализация watermark — как у чекпоинтов (checkpoint._wm_encode/_wm_decode):
-поддерживаются int, str и интегральные Decimal; прочие типы (float,
-datetime-объекты) не сохраняются — обновление молча пропускается, старый
-watermark остаётся в силе (безопасное направление: перепроверим больше).
+Watermark serialization matches checkpoints (checkpoint._wm_encode/_wm_decode):
+int, str, and integral Decimal are supported; other types (float,
+datetime objects) are not saved — the update is silently skipped and the
+old watermark stays in force (the safe direction: we re-check more).
 """
 from __future__ import annotations
 
@@ -32,16 +32,16 @@ from pathlib import Path
 
 from .checkpoint import _wm_decode, _wm_encode, config_fingerprint
 
-STATE_VERSION = 1       # версия формата ИНКРЕМЕНТАЛЬНОГО стейта (не чекпоинта)
-HISTORY_LIMIT = 500     # хранимых записей истории прогонов (старые вытесняются)
+STATE_VERSION = 1       # format version of the INCREMENTAL state (not the checkpoint)
+HISTORY_LIMIT = 500     # run-history entries kept (older ones are evicted)
 
 
 def state_fingerprint(config) -> str:
-    """Отпечаток конфига для инкрементального стейта.
+    """Config fingerprint for the incremental state.
 
-    База — config_fingerprint (эндпоинты, правила, стратегия, таблицы…),
-    плюс карта config.incremental: старый watermark по другой колонке
-    неприменим, поэтому её смена тоже инвалидирует стейт.
+    The base is config_fingerprint (endpoints, rules, strategy, tables…),
+    plus the config.incremental map: an old watermark for a different column
+    is not applicable, so changing it also invalidates the state.
     """
     base = config_fingerprint(config)
     extra = json.dumps(getattr(config, "incremental", {}) or {},
@@ -50,33 +50,33 @@ def state_fingerprint(config) -> str:
 
 
 def default_state_path(fingerprint: str) -> str:
-    """Авто-имя файла стейта (аналогично авто-имени чекпоинта)."""
+    """Auto-name of the state file (analogous to the checkpoint auto-name)."""
     return f".dbparity_incr_{fingerprint[:12]}.json"
 
 
 class IncrementalState:
-    """Watermark'и последней успешной сверки по таблицам (JSON-файл).
+    """Per-table watermarks of the last successful comparison (a JSON file).
 
-    Конструктор создаёт пустой стейт; чтение с диска — через
-    classmethod load_or_create (битый или чужой по отпечатку файл
-    молча игнорируется — начинаем с чистого стейта).
+    The constructor creates an empty state; reading from disk goes through
+    the classmethod load_or_create (a corrupted file or one with a foreign
+    fingerprint is silently ignored — we start from a clean state).
 
-    Помимо watermark'ов файл хранит "history" — хронологический журнал
-    итогов прогонов (record_run): по нему строится отчёт-таймлайн дрейфа
-    (`dbparity history`). Ключ появился позже формата v1 и опционален:
-    старые файлы без него загружаются как стейт с пустой историей.
+    Besides the watermarks the file stores "history" — a chronological log
+    of run outcomes (record_run): the drift timeline report is built from
+    it (`dbparity history`). The key appeared after format v1 and is
+    optional: old files without it load as a state with an empty history.
     """
 
     def __init__(self, path, fingerprint: str):
         self.path = Path(path)
         self.fp = fingerprint
         self._lock = threading.Lock()
-        self._tables: dict = {}     # таблица → закодированный watermark
-        self._history: list = []    # журнал прогонов (записи record_run)
+        self._tables: dict = {}     # table → encoded watermark
+        self._history: list = []    # run log (record_run entries)
 
     @classmethod
     def load_or_create(cls, path, fingerprint: str) -> "IncrementalState":
-        """Загружает стейт с диска, если файл существует и отпечаток совпал."""
+        """Loads the state from disk if the file exists and the fingerprint matches."""
         st = cls(path, fingerprint)
         if st.path.exists():
             try:
@@ -85,43 +85,43 @@ class IncrementalState:
                         and data.get("fingerprint") == fingerprint
                         and isinstance(data.get("tables"), dict)):
                     st._tables = dict(data["tables"])
-                    # старые файлы (до появления истории) — без "history";
-                    # это не ошибка формата, просто пустой журнал
+                    # old files (predating history) — no "history" key;
+                    # that is not a format error, just an empty log
                     hist = data.get("history")
                     if isinstance(hist, list):
                         st._history = list(hist)
             except (OSError, json.JSONDecodeError):
-                pass    # битый/недоступный файл — начинаем заново
+                pass    # corrupted/unreadable file — start over
         return st
 
-    # ---- чтение ---------------------------------------------------------
+    # ---- reading ----------------------------------------------------------
 
     def last_watermark(self, table: str):
-        """Watermark таблицы с прошлого прогона либо None (полная сверка)."""
+        """The table's watermark from the previous run, or None (full comparison)."""
         enc = self._tables.get(table)
         if not isinstance(enc, dict):
             return None
         try:
             return _wm_decode(enc)
         except (KeyError, TypeError, ValueError):
-            return None     # рукой правленный/битый элемент — как отсутствие
+            return None     # hand-edited/corrupted entry — treat as absent
 
     @property
     def history(self) -> list:
-        """История прогонов (копия; хронологический порядок, свежие в конце).
+        """Run history (a copy; chronological order, most recent last).
 
-        Элемент — summary из record_run: {"ts", "full", "equivalent",
-        "tables": {таблица: счётчики дрейфа}}.
+        An element is the summary from record_run: {"ts", "full",
+        "equivalent", "tables": {table: drift counters}}.
         """
         return list(self._history)
 
-    # ---- запись ---------------------------------------------------------
+    # ---- writing ----------------------------------------------------------
 
     def update(self, table: str, wm) -> None:
-        """Фиксирует новый watermark таблицы и сразу сохраняет файл.
+        """Records the table's new watermark and saves the file immediately.
 
-        Неэнкодируемый watermark (float, datetime и т.п.) пропускается —
-        старое значение остаётся, следующий прогон перепроверит больше строк.
+        A non-encodable watermark (float, datetime, etc.) is skipped —
+        the old value stays, and the next run re-checks more rows.
         """
         enc = _wm_encode(wm)
         if enc is None:
@@ -131,15 +131,15 @@ class IncrementalState:
             self._save_locked()
 
     def record_run(self, summary: dict) -> None:
-        """Дописывает итог прогона в историю и сразу сохраняет файл.
+        """Appends the run outcome to the history and saves the file immediately.
 
-        summary формирует движок в конце run():
+        The engine builds the summary at the end of run():
         {"ts": iso-UTC, "full": bool, "equivalent": bool,
-         "tables": {таблица: {"total_diffs", "mismatched",
-                              "missing_in_target", "extra_in_target",
-                              "src_rows"}}}.
-        Журнал ограничен последними HISTORY_LIMIT записями — стейт-файл
-        не разрастается при сверке по расписанию (cron во время dual-write).
+         "tables": {table: {"total_diffs", "mismatched",
+                            "missing_in_target", "extra_in_target",
+                            "src_rows"}}}.
+        The log is capped at the last HISTORY_LIMIT entries — the state file
+        does not balloon under scheduled comparison (cron during dual-write).
         """
         with self._lock:
             self._history.append(summary)
@@ -148,15 +148,15 @@ class IncrementalState:
             self._save_locked()
 
     def save(self) -> None:
-        """Принудительная запись стейта (потокобезопасно)."""
+        """Forces a state write (thread-safe)."""
         with self._lock:
             self._save_locked()
 
     def _save_locked(self) -> None:
-        """Атомарная запись: tmp-файл + os.replace. Вызывать под локом."""
+        """Atomic write: tmp file + os.replace. Call under the lock."""
         payload = {"version": STATE_VERSION, "fingerprint": self.fp,
                    "tables": self._tables, "history": self._history}
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False),
                        encoding="utf-8")
-        os.replace(tmp, self.path)      # атомарная подмена
+        os.replace(tmp, self.path)      # atomic swap

@@ -1,4 +1,4 @@
-"""Веб-консоль: запуск сверки через HTTP, отдача отчётов, безопасность."""
+"""Web console: launching comparisons over HTTP, serving reports, security."""
 import json
 import threading
 import time
@@ -41,19 +41,19 @@ def test_index_page(console):
     base, _ = console
     status, body = _get(base + "/")
     assert status == 200
-    assert "config.yaml" in body and "Запустить сверку" in body
+    assert "config.yaml" in body and "Run comparison" in body
 
 
 def test_run_rejects_missing_config(console):
     base, _ = console
     status, body = _post(base + "/api/run", {"config_path": "/nope/nowhere.yaml"})
     assert status == 400
-    assert "не найден" in body["error"]
+    assert "not found" in body["error"]
 
 
 def test_full_run_and_report(console, tmp_path):
     base, _ = console
-    build_demo(tmp_path / "demo")            # создаёт demo_config.yaml
+    build_demo(tmp_path / "demo")            # creates demo_config.yaml
     cfg_path = tmp_path / "demo" / "demo_config.yaml"
 
     status, body = _post(base + "/api/run", {"config_path": str(cfg_path)})
@@ -69,18 +69,18 @@ def test_full_run_and_report(console, tmp_path):
             break
         time.sleep(0.3)
     assert run is not None and run["status"] == "done", run
-    assert run["equivalent"] is False        # демо содержит 12 расхождений
+    assert run["equivalent"] is False        # the demo contains 12 diffs
     assert run["total_diffs"] == 12
 
     status, report = _get(base + f"/runs/{rid}/report.html")
-    assert status == 200 and "НЕ ЭКВИВАЛЕНТНО" in report
+    assert status == 200 and "NOT EQUIVALENT" in report
     status, rjson = _get(base + f"/runs/{rid}/report.json")
     assert status == 200
     assert json.loads(rjson)["schema_version"] == 1
 
 
 def test_remote_bind_requires_opt_in(tmp_path):
-    """Бинд не на localhost без явного opt-in запрещён (нет аутентификации)."""
+    """Binding to non-localhost without explicit opt-in is forbidden (no auth)."""
     with pytest.raises(ValueError):
         create_server("0.0.0.0", 0, tmp_path / "w")
     srv = create_server("0.0.0.0", 0, tmp_path / "w2", allow_remote=True)
@@ -88,7 +88,7 @@ def test_remote_bind_requires_opt_in(tmp_path):
 
 
 def test_oversized_body_rejected(console):
-    """Тело больше потолка отклоняется до чтения (DoS-защита)."""
+    """A body over the cap is rejected before it is read (DoS protection)."""
     import http.client
     base, srv = console
     conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
@@ -98,10 +98,10 @@ def test_oversized_body_rejected(console):
         resp = conn.getresponse()
         assert resp.status == 413
     except (ConnectionError, OSError):
-        pass    # сервер оборвал приём гигантского тела — тоже защита
+        pass    # the server dropped the giant upload mid-body - protection too
     finally:
         conn.close()
-    assert srv.runs_snapshot() == []         # запуск не создан
+    assert srv.runs_snapshot() == []         # no run was created
 
 
 def test_path_traversal_blocked(console):

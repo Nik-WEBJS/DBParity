@@ -29,7 +29,7 @@ gives you a report you can put on the table at project sign-off.
 ```console
 $ dbparity compare -c config.yaml
 
-           DBParity v0.8.0: Oracle PROD  →  PostgreSQL NEW
+           DBParity v0.9.0: Oracle PROD  →  PostgreSQL NEW
 ┏━━━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
 ┃ Table     ┃  Src ┃  Dst ┃ Matched ┃ Diff  ┃ Missing   ┃ Extra  ┃ Dup   ┃ Status  ┃
 ┡━━━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
@@ -44,7 +44,7 @@ $ echo $?
 1
 ```
 
-> **Status: v0.8 alpha.** Core engine (98 tests) is exercised against live
+> **Status: v0.9 alpha.** Core engine (100 tests) is exercised against live
 > PostgreSQL and SQL Server in CI, runs survive network drops
 > (checkpoint/resume + retries). The Oracle adapter is written but not yet
 > battle-tested — **testers with real Oracle instances are very welcome!**
@@ -76,7 +76,7 @@ schema drift — while **not** flagging things that only *look* different:
 | timezones | normalize to UTC |
 | Oracle `DATE` carries time / PG `date` doesn't | optional midnight truncation |
 | `CHAR(n)` space padding | optional rtrim |
-| Unicode composition (`ё` two ways) | NFC normalization |
+| Unicode composition (`é` two ways) | NFC normalization |
 | `0/1/'Y'/'N'` vs `boolean` | numeric mapping |
 | BLOBs | MD5 comparison |
 | timestamp precision (µs vs ns) | truncation to common precision |
@@ -178,7 +178,7 @@ understates real gains on PostgreSQL/Oracle where hashing is native C.
 
 ```bash
 pip install -e ".[dev,postgres]"
-pytest tests/ -v                      # 98 tests
+pytest tests/ -v                      # 100 tests
 
 # against a live PostgreSQL:
 docker compose up -d

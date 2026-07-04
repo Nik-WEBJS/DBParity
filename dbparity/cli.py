@@ -17,16 +17,16 @@ from .core import engine
 from .report.render import write_html, write_json
 
 _STATUS = {"ok": "[green]OK[/green]",
-           "diff": "[red]РАСХОЖДЕНИЯ[/red]",
-           "error": "[yellow]ОШИБКА[/yellow]"}
+           "diff": "[red]DIFF[/red]",
+           "error": "[yellow]ERROR[/yellow]"}
 
 
 def _print_summary(console: Console, run) -> None:
     rt = RichTable(title=f"DBParity v{__version__}: "
                          f"{run.source_label} → {run.target_label}")
-    for col in ("Таблица", "Src", "Dst", "Совпало", "Разл.",
-                "Нет в dst", "Лишние", "Дубли", "NULL PK", "Режим", "Статус"):
-        rt.add_column(col, justify="right" if col not in ("Таблица", "Режим", "Статус") else "left")
+    for col in ("Table", "Src", "Dst", "Matched", "Diff",
+                "Missing", "Extra", "Dups", "NULL PK", "Mode", "Status"):
+        rt.add_column(col, justify="right" if col not in ("Table", "Mode", "Status") else "left")
     for t in run.tables:
         rt.add_row(t.table, str(t.src_rows), str(t.dst_rows), str(t.matched),
                    str(t.mismatched), str(t.missing_in_target),
@@ -36,101 +36,104 @@ def _print_summary(console: Console, run) -> None:
 
     for t in run.tables:
         for w in t.warnings:
-            console.print(f"[yellow]Предупреждение {t.table}:[/yellow] {w}")
+            console.print(f"[yellow]Warning {t.table}:[/yellow] {w}")
 
     if run.tables_only_in_source:
-        console.print(f"[orange3]Таблицы только в источнике:[/orange3] "
+        console.print(f"[orange3]Tables only in source:[/orange3] "
                       f"{', '.join(run.tables_only_in_source)}")
     if run.tables_only_in_target:
-        console.print(f"[yellow]Таблицы только в приёмнике:[/yellow] "
+        console.print(f"[yellow]Tables only in target:[/yellow] "
                       f"{', '.join(run.tables_only_in_target)}")
     for d in run.schema_diffs:
         parts = []
         if d.missing_in_target:
-            parts.append(f"нет колонок в приёмнике: {', '.join(d.missing_in_target)}")
+            parts.append(f"columns missing in target: {', '.join(d.missing_in_target)}")
         if d.extra_in_target:
-            parts.append(f"лишние колонки: {', '.join(d.extra_in_target)}")
+            parts.append(f"extra columns in target: {', '.join(d.extra_in_target)}")
         if d.type_changes:
-            parts.append(f"смена типов: {len(d.type_changes)}")
+            parts.append(f"type changes: {len(d.type_changes)}")
         if d.pk_mismatch:
-            parts.append("PK различается")
-        console.print(f"[orange3]Схема {d.table}:[/orange3] {'; '.join(parts)}")
+            parts.append("PK differs")
+        console.print(f"[orange3]Schema {d.table}:[/orange3] {'; '.join(parts)}")
 
     t = run.totals
     if run.equivalent:
+        matched = f"{t['matched']:,}".replace(",", " ")
         console.print(Panel(
-            f"[bold green]ЭКВИВАЛЕНТНО[/bold green] — "
-            f"{t['matched']:,} строк совпало, расхождений нет".replace(",", " "),
+            f"[bold green]EQUIVALENT[/bold green] — "
+            f"{matched} rows matched, no differences",
             border_style="green"))
     else:
+        diffs = f"{t['total_diffs']:,}".replace(",", " ")
         console.print(Panel(
-            f"[bold red]НЕ ЭКВИВАЛЕНТНО[/bold red] — расхождений: "
-            f"{t['total_diffs']:,} (совпадение {t['match_pct']}%)".replace(",", " "),
+            f"[bold red]NOT EQUIVALENT[/bold red] — differences: "
+            f"{diffs} (match {t['match_pct']}%)",
             border_style="red"))
 
 
 def _cmd_validate(console: Console, path: str) -> int:
-    """Команда validate: проверка конфига без подключения к БД.
+    """The validate command: check the config without connecting to databases.
 
-    Коды выхода: 0 — конфиг валиден, 1 — найдены проблемы,
-    2 — файл не найден или не разбирается как YAML.
+    Exit codes: 0 — the config is valid, 1 — problems found,
+    2 — the file is missing or cannot be parsed as YAML.
     """
     p = Path(path)
     if not p.exists():
-        console.print(f"[bold red]Ошибка:[/bold red] конфиг не найден: {p}")
+        console.print(f"[bold red]Error:[/bold red] Config not found: {p}")
         return 2
     try:
         with open(p, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        console.print("[bold red]Ошибка:[/bold red] не удалось разобрать YAML")
+        console.print("[bold red]Error:[/bold red] failed to parse YAML")
         console.print(str(e), style="red", markup=False)
         return 2
 
     problems = validate_config_dict(data)
     if problems:
-        console.print(f"[bold red]Конфиг невалиден[/bold red] — "
-                      f"проблем: {len(problems)}")
+        console.print(f"[bold red]Config is invalid[/bold red] — "
+                      f"{len(problems)} problem(s)")
         for msg in problems:
             console.print(f"  ✗ {msg}", style="red", markup=False)
         return 1
 
     cfg = config_from_dict(data)
-    console.print("[bold green]Конфиг валиден[/bold green]")
+    console.print("[bold green]Config is valid[/bold green]")
     src = cfg.source.label or cfg.source.type
     dst = cfg.target.label or cfg.target.type
-    console.print(f"  Сверка: {src} → {dst}", markup=False)
-    console.print(f"  Таблицы: "
-                  f"{', '.join(cfg.tables) if cfg.tables else 'все общие'}",
+    console.print(f"  Comparison: {src} → {dst}", markup=False)
+    console.print(f"  Tables: "
+                  f"{', '.join(cfg.tables) if cfg.tables else 'all common'}",
                   markup=False)
-    console.print(f"  Стратегия: {cfg.strategy}, workers: {cfg.workers}",
+    console.print(f"  Strategy: {cfg.strategy}, workers: {cfg.workers}",
                   markup=False)
     reports = ", ".join(x for x in (cfg.report.html, cfg.report.json) if x)
     if reports:
-        console.print(f"  Отчёты: {reports}", markup=False)
+        console.print(f"  Reports: {reports}", markup=False)
     return 0
 
 
 def _cmd_history(console: Console, config_path: str, html) -> int:
-    """Таймлайн дрейфа по истории инкрементальных прогонов."""
+    """Drift timeline from the history of incremental runs."""
     from .core.incremental import (IncrementalState, default_state_path,
                                    state_fingerprint)
     from .report.render import write_timeline_html
     try:
         cfg = load_config(config_path)
     except Exception as e:  # noqa: BLE001
-        console.print(f"[bold red]Ошибка:[/bold red] {e}")
+        console.print(f"[bold red]Error:[/bold red] {e}")
         return 2
     if not cfg.incremental:
-        console.print("[yellow]В конфиге нет карты incremental — "
-                      "история дрейфа не ведётся.[/yellow]")
+        console.print("[yellow]The config has no incremental map — "
+                      "drift history is not tracked.[/yellow]")
         return 2
     ifp = state_fingerprint(cfg)
     st = IncrementalState.load_or_create(default_state_path(ifp), ifp)
     hist = st.history
     if not hist:
-        console.print("[yellow]История пуста: стейт-файл не найден или "
-                      "с этим конфигом ещё не было прогонов.[/yellow]")
+        console.print("[yellow]Run history is empty: the state file was not "
+                      "found or no runs have been made with this config "
+                      "yet.[/yellow]")
         return 2
 
     tables = sorted({n for h in hist for n in (h.get("tables") or {})})
@@ -139,9 +142,9 @@ def _cmd_history(console: Console, config_path: str, html) -> int:
         return sum(int((v or {}).get("total_diffs", 0) or 0)
                    for v in (h.get("tables") or {}).values())
 
-    rt = RichTable(title=f"Дрейф по прогонам (всего {len(hist)}, последние 15)")
-    for col in ["Время", "Режим", *tables, "Σ дрейф"]:
-        rt.add_column(col, justify="right" if col not in ("Время", "Режим") else "left")
+    rt = RichTable(title=f"Drift by run (total {len(hist)}, last 15)")
+    for col in ["Time", "Mode", *tables, "Σ drift"]:
+        rt.add_column(col, justify="right" if col not in ("Time", "Mode") else "left")
     for h in hist[-15:]:
         total = entry_total(h)
         style = "green" if total == 0 else "red"
@@ -157,27 +160,27 @@ def _cmd_history(console: Console, config_path: str, html) -> int:
     last_total = entry_total(hist[-1])
     if last_total == 0:
         console.print(Panel(
-            "[bold green]ДРЕЙФ НУЛЕВОЙ[/bold green] — по последнему прогону "
-            "расхождений среди изменённых строк нет",
+            "[bold green]ZERO DRIFT[/bold green] — no differences among "
+            "changed rows in the latest run",
             border_style="green"))
     else:
         console.print(Panel(
-            f"[bold red]Дрейф: {last_total}[/bold red] по последнему прогону",
+            f"[bold red]Drift: {last_total}[/bold red] in the latest run",
             border_style="red"))
     if html:
         p = write_timeline_html(hist, cfg.source.label or cfg.source.type,
                                 cfg.target.label or cfg.target.type, html)
-        console.print(f"HTML-таймлайн: [bold]{p.resolve()}[/bold]")
+        console.print(f"HTML timeline: [bold]{p.resolve()}[/bold]")
     return 0
 
 
 def _cmd_watch(console: Console, config_path: str, interval: float,
                stable: int, max_runs: int) -> int:
-    """Режим наблюдения: инкрементальные прогоны до устойчиво нулевого дрейфа.
+    """Watch mode: incremental runs until drift is stably zero.
 
-    Сценарий ночи переключения: dual-write включён, watch гоняет сверку
-    каждые N секунд; когда дрейф нулевой `stable` раз подряд — зелёный
-    сигнал и код выхода 0.
+    The cutover-night scenario: dual-write is on, watch reruns the
+    comparison every N seconds; once drift is zero `stable` times in a
+    row — green light and exit code 0.
     """
     import time as _time
     from datetime import datetime as _dt
@@ -185,11 +188,11 @@ def _cmd_watch(console: Console, config_path: str, interval: float,
     try:
         cfg = load_config(config_path)
     except Exception as e:  # noqa: BLE001
-        console.print(f"[bold red]Ошибка:[/bold red] {e}")
+        console.print(f"[bold red]Error:[/bold red] {e}")
         return 2
     if not cfg.incremental:
-        console.print("[yellow]В конфиге нет карты incremental — "
-                      "режиму наблюдения нечего отслеживать.[/yellow]")
+        console.print("[yellow]The config has no incremental map — "
+                      "watch mode has nothing to track.[/yellow]")
         return 2
 
     streak = 0
@@ -197,7 +200,7 @@ def _cmd_watch(console: Console, config_path: str, interval: float,
         try:
             run = engine.run(cfg)
         except Exception as e:  # noqa: BLE001
-            console.print(f"[bold red]Ошибка прогона {i}:[/bold red] {e}")
+            console.print(f"[bold red]Run {i} error:[/bold red] {e}")
             return 2
         tracked = [t for t in run.tables if t.table in cfg.incremental]
         drift = sum(t.total_diffs for t in tracked)
@@ -205,28 +208,28 @@ def _cmd_watch(console: Console, config_path: str, interval: float,
         ts = _dt.now().strftime("%H:%M:%S")
         if errors:
             streak = 0
-            console.print(f"[yellow]{ts} · прогон {i}: ошибки таблиц "
-                          f"({', '.join(errors)}) — серия сброшена[/yellow]")
+            console.print(f"[yellow]{ts} · run {i}: table errors "
+                          f"({', '.join(errors)}) — streak reset[/yellow]")
         elif drift == 0:
             streak += 1
-            console.print(f"[green]{ts} · прогон {i}: дрейф 0 "
-                          f"({streak}/{stable} подряд)[/green]")
+            console.print(f"[green]{ts} · run {i}: drift 0 "
+                          f"({streak}/{stable} in a row)[/green]")
         else:
             streak = 0
             per = ", ".join(f"{t.table}: {t.total_diffs}"
                             for t in tracked if t.total_diffs)
-            console.print(f"[red]{ts} · прогон {i}: дрейф {drift} ({per})[/red]")
+            console.print(f"[red]{ts} · run {i}: drift {drift} ({per})[/red]")
         if streak >= stable:
             console.print(Panel(
-                f"[bold green]ДРЕЙФ НУЛЕВОЙ {stable} раз(а) подряд[/bold green] "
-                f"— можно переключать трафик",
+                f"[bold green]ZERO DRIFT {stable} time(s) in a row[/bold green] "
+                f"— safe to cut over",
                 border_style="green"))
             return 0
         if i < max_runs:
             _time.sleep(interval)
     console.print(Panel(
-        f"[bold red]Лимит прогонов ({max_runs}) исчерпан[/bold red] — "
-        f"дрейф так и не стабилизировался на нуле",
+        f"[bold red]Run limit ({max_runs}) exhausted[/bold red] — "
+        f"drift never stabilized at zero",
         border_style="red"))
     return 1
 
@@ -234,55 +237,55 @@ def _cmd_watch(console: Console, config_path: str, interval: float,
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="dbparity",
-        description="Верификация эквивалентности данных при миграциях БД",
+        description="Data equivalence verification for database migrations",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    pc = sub.add_parser("compare", help="Сверка по YAML-конфигу")
-    pc.add_argument("-c", "--config", required=True, help="путь к config.yaml")
-    pc.add_argument("--html", help="переопределить путь HTML-отчёта")
-    pc.add_argument("--json", help="переопределить путь JSON-отчёта")
+    pc = sub.add_parser("compare", help="Compare using a YAML config")
+    pc.add_argument("-c", "--config", required=True, help="path to config.yaml")
+    pc.add_argument("--html", help="override the HTML report path")
+    pc.add_argument("--json", help="override the JSON report path")
     pc.add_argument("--workers", type=int,
-                    help="сверять N таблиц параллельно (соединение на поток)")
+                    help="compare N tables in parallel (one connection per thread)")
     pc.add_argument("--resume", action="store_true",
-                    help="продолжить прерванную сверку с чекпоинта")
+                    help="resume an interrupted comparison from a checkpoint")
     pc.add_argument("--full", action="store_true",
-                    help="игнорировать сохранённые инкрементальные "
-                         "watermark'и — полная сверка (стейт обновится)")
+                    help="ignore saved incremental watermarks — "
+                         "full comparison (the state will be updated)")
 
-    pd = sub.add_parser("demo", help="Демо на встроенных данных с расхождениями")
-    pd.add_argument("--outdir", default="demo_out", help="каталог для демо-файлов")
-    pd.add_argument("--workers", type=int, help="параллельные таблицы")
+    pd = sub.add_parser("demo", help="Demo on built-in data with differences")
+    pd.add_argument("--outdir", default="demo_out", help="directory for demo files")
+    pd.add_argument("--workers", type=int, help="parallel tables")
 
     pv = sub.add_parser("validate",
-                        help="Проверка конфига без подключения к БД")
-    pv.add_argument("-c", "--config", required=True, help="путь к config.yaml")
+                        help="Validate the config without connecting to databases")
+    pv.add_argument("-c", "--config", required=True, help="path to config.yaml")
 
     ph = sub.add_parser("history",
-                        help="Таймлайн дрейфа по истории инкрементальных прогонов")
-    ph.add_argument("-c", "--config", required=True, help="путь к config.yaml")
-    ph.add_argument("--html", help="сохранить HTML-таймлайн по указанному пути")
+                        help="Drift timeline from the history of incremental runs")
+    ph.add_argument("-c", "--config", required=True, help="path to config.yaml")
+    ph.add_argument("--html", help="save the HTML timeline to the given path")
 
     ps = sub.add_parser("serve",
-                        help="Локальная веб-консоль (браузер вместо терминала)")
+                        help="Local web console (a browser instead of the terminal)")
     ps.add_argument("--host", default="127.0.0.1")
     ps.add_argument("--port", type=int, default=8765)
     ps.add_argument("--workdir", default="dbparity_console",
-                    help="каталог для отчётов консоли")
+                    help="directory for console reports")
     ps.add_argument("--allow-remote", action="store_true",
-                    help="разрешить бинд не на localhost (консоль БЕЗ "
-                         "аутентификации — осознанный риск)")
+                    help="allow binding to non-localhost (the console has NO "
+                         "authentication — a deliberate risk)")
 
     pw = sub.add_parser("watch",
-                        help="Наблюдение: инкрементальные прогоны до "
-                             "устойчиво нулевого дрейфа")
-    pw.add_argument("-c", "--config", required=True, help="путь к config.yaml")
+                        help="Watch mode: incremental runs until drift "
+                             "is stably zero")
+    pw.add_argument("-c", "--config", required=True, help="path to config.yaml")
     pw.add_argument("--interval", type=float, default=300,
-                    help="пауза между прогонами, сек (по умолчанию 300)")
+                    help="pause between runs, seconds (default 300)")
     pw.add_argument("--stable", type=int, default=2,
-                    help="сколько нулевых прогонов подряд считать успехом")
+                    help="how many consecutive zero-drift runs count as success")
     pw.add_argument("--max-runs", type=int, default=100,
-                    help="максимум прогонов до выхода с кодом 1")
+                    help="maximum number of runs before exiting with code 1")
 
     args = parser.parse_args(argv)
     console = Console()
@@ -300,24 +303,24 @@ def main(argv=None) -> int:
             srv = create_server(args.host, args.port, args.workdir,
                                 allow_remote=args.allow_remote)
         except ValueError as e:
-            console.print(f"[bold red]Ошибка:[/bold red] {e}")
+            console.print(f"[bold red]Error:[/bold red] {e}")
             return 2
         if args.allow_remote:
-            console.print("[bold yellow]ВНИМАНИЕ:[/bold yellow] консоль "
-                          "доступна из сети и не имеет аутентификации")
-        console.print(f"Веб-консоль: [bold]http://{args.host}:{srv.port}/[/bold] "
-                      f"(Ctrl+C — остановка)")
+            console.print("[bold yellow]WARNING:[/bold yellow] the console "
+                          "is network-accessible and has no authentication")
+        console.print(f"Web console: [bold]http://{args.host}:{srv.port}/[/bold] "
+                      f"(Ctrl+C to stop)")
         try:
             srv.serve_forever()
         except KeyboardInterrupt:
-            console.print("\n[dim]Остановлено[/dim]")
+            console.print("\n[dim]Stopped[/dim]")
         return 0
 
     try:
         if args.cmd == "demo":
             from .demo.seed import build_demo
             cfg = build_demo(args.outdir)
-            console.print(f"[dim]Демо-БД и конфиг созданы в: {Path(args.outdir).resolve()}[/dim]")
+            console.print(f"[dim]Demo databases and config created in: {Path(args.outdir).resolve()}[/dim]")
         else:
             cfg = load_config(args.config)
             if args.html:
@@ -330,7 +333,7 @@ def main(argv=None) -> int:
         progress_ui = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
-            TextColumn("{task.completed:>10.0f} строк"),
+            TextColumn("{task.completed:>10.0f} rows"),
             console=console, transient=True,
         )
         task_ids = {}
@@ -347,17 +350,17 @@ def main(argv=None) -> int:
                              resume=getattr(args, "resume", False),
                              full=getattr(args, "full", False))
     except Exception as e:  # noqa: BLE001
-        console.print(f"[bold red]Ошибка:[/bold red] {e}")
+        console.print(f"[bold red]Error:[/bold red] {e}")
         return 2
 
     _print_summary(console, run)
     if cfg.report.html:
         p = write_html(run, cfg.report.html)
-        console.print(f"HTML-отчёт: [bold]{p.resolve()}[/bold]")
+        console.print(f"HTML report: [bold]{p.resolve()}[/bold]")
     if cfg.report.json:
         p = write_json(run, cfg.report.json)
-        console.print(f"JSON-отчёт: [bold]{p.resolve()}[/bold]")
+        console.print(f"JSON report: [bold]{p.resolve()}[/bold]")
     if args.cmd == "demo":
-        console.print("[dim]Демо намеренно содержит расхождения — "
-                      "код выхода 1 здесь ожидаем.[/dim]")
+        console.print("[dim]The demo intentionally contains differences — "
+                      "exit code 1 is expected.[/dim]")
     return 0 if run.equivalent else 1

@@ -1,149 +1,149 @@
-# Формат JSON-отчёта DBParity — схема v1
+# DBParity JSON report format — schema v1
 
-Справочник машиночитаемого отчёта, который DBParity пишет по пути
-`report.json` из конфига (или через `dbparity.report.render.write_json`).
-Отчёт — это сериализованный `RunResult.to_dict()`
-(`dbparity/core/models.py`).
+Reference for the machine-readable report that DBParity writes to the
+`report.json` path from the config (or via
+`dbparity.report.render.write_json`). The report is a serialized
+`RunResult.to_dict()` (`dbparity/core/models.py`).
 
-- Текущая версия схемы: **1** (константа `REPORT_SCHEMA_VERSION`
-  в `dbparity/core/models.py`).
-- Файл пишется в UTF-8, `ensure_ascii=False`, `indent=2`.
-- Ключ `schema_version` всегда идёт первым — потребитель может проверить
-  версию до разбора остального документа.
-- Замороженный набор ключей охраняется тестом
+- Current schema version: **1** (the `REPORT_SCHEMA_VERSION` constant
+  in `dbparity/core/models.py`).
+- The file is written in UTF-8, `ensure_ascii=False`, `indent=2`.
+- The `schema_version` key always comes first — a consumer can check the
+  version before parsing the rest of the document.
+- The frozen key set is guarded by the golden test
   `tests/test_report_schema.py`.
 
-## Гарантии совместимости
+## Compatibility guarantees
 
-Формат подчиняется semver-подобным правилам (роадмап v0.9):
+The format follows semver-like rules (roadmap v0.9):
 
-| Изменение | Класс | `schema_version` |
+| Change | Class | `schema_version` |
 |---|---|---|
-| Добавление нового ключа (на любом уровне) | минорное | не меняется |
-| Удаление или переименование ключа | мажорное | инкремент |
-| Смена типа или семантики значения существующего ключа | мажорное | инкремент |
+| Adding a new key (at any level) | minor | unchanged |
+| Removing or renaming a key | major | incremented |
+| Changing the type or semantics of an existing key's value | major | incremented |
 
-Следствия для потребителей:
+Consequences for consumers:
 
-1. **Игнорируйте незнакомые ключи.** Новые ключи могут появиться в любом
-   релизе без смены `schema_version`; каждый из них обязан быть описан
-   в этом документе.
-2. **Не полагайтесь на порядок ключей**, кроме гарантии «`schema_version`
-   первый». Фактический порядок стабилен (порядок полей dataclass),
-   но контрактом не является.
-3. **Проверяйте `schema_version`** и отказывайтесь разбирать отчёт
-   с бóльшей версией схемы, чем вы поддерживаете.
-4. Ключи, описанные ниже как v1, не исчезнут и не сменят тип
-   без инкремента `schema_version`.
+1. **Ignore unknown keys.** New keys may appear in any release without a
+   `schema_version` bump; every one of them must be documented in this
+   document.
+2. **Do not rely on key order**, beyond the "`schema_version` comes first"
+   guarantee. The actual order is stable (dataclass field order),
+   but it is not part of the contract.
+3. **Check `schema_version`** and refuse to parse a report with a higher
+   schema version than you support.
+4. Keys documented below as v1 will not disappear or change type
+   without a `schema_version` increment.
 
-## Верхний уровень
+## Top level
 
-| Ключ | Тип | Семантика |
+| Key | Type | Semantics |
 |---|---|---|
-| `schema_version` | int | Версия схемы отчёта. В v1 всегда `1`. |
-| `source_label` | string | Человекочитаемая метка источника: `label` эндпоинта из конфига либо автогенерированная (`sqlite:<path>` или тип эндпоинта). |
-| `target_label` | string | То же для приёмника. |
-| `started_at` | string | Момент старта прогона, UTC. Формат `str(datetime)`: `"YYYY-MM-DD HH:MM:SS.ffffff+00:00"`. |
-| `finished_at` | string | Момент окончания прогона, тот же формат. |
-| `tables` | array | Результаты посверенных таблиц (см. «Элемент tables[]»). Содержит и «ошибочные» записи: таблица, запрошенная в `tables` конфига, но отсутствующая хотя бы с одной стороны, попадает сюда с заполненным `error`. |
-| `schema_diffs` | array | Различия схем — только таблицы, у которых они есть (см. «Элемент schema_diffs[]»). Пустой массив = схемы общих таблиц совпали. |
-| `tables_only_in_source` | array<string> | Имена таблиц, которые есть только в источнике (в оригинальном регистре источника), отсортированы. |
-| `tables_only_in_target` | array<string> | Имена таблиц только в приёмнике. |
-| `config_summary` | object | Слепок настроек прогона (см. «config_summary»). Чувствительные значения опций (`password`, `passwd`, `secret`, `token`) маскируются строкой `"•••"`. |
-| `equivalent` | bool | Итоговый вердикт: `true` ⇔ схемы чистые (`schema_diffs`, `tables_only_in_*` пусты) **и** у каждой таблицы `status == "ok"`. |
-| `totals` | object | Агрегаты по всем таблицам (см. «totals»). |
+| `schema_version` | int | Report schema version. Always `1` in v1. |
+| `source_label` | string | Human-readable source label: the endpoint's `label` from the config, or an auto-generated one (`sqlite:<path>` or the endpoint type). |
+| `target_label` | string | The same for the target. |
+| `started_at` | string | Run start time, UTC. `str(datetime)` format: `"YYYY-MM-DD HH:MM:SS.ffffff+00:00"`. |
+| `finished_at` | string | Run finish time, same format. |
+| `tables` | array | Results for the compared tables (see "tables[] element"). Also contains "error" entries: a table requested via the config's `tables` but missing on at least one side lands here with `error` populated. |
+| `schema_diffs` | array | Schema differences — only tables that have any (see "schema_diffs[] element"). An empty array = the schemas of the common tables matched. |
+| `tables_only_in_source` | array<string> | Names of tables present only in the source (in the source's original case), sorted. |
+| `tables_only_in_target` | array<string> | Tables present only in the target. |
+| `config_summary` | object | Snapshot of the run settings (see "config_summary"). Sensitive option values (`password`, `passwd`, `secret`, `token`) are masked with the string `"•••"`. |
+| `equivalent` | bool | Final verdict: `true` ⇔ the schemas are clean (`schema_diffs` and `tables_only_in_*` are empty) **and** every table has `status == "ok"`. |
+| `totals` | object | Aggregates across all tables (see "totals"). |
 
-## Элемент `tables[]`
+## `tables[]` element
 
-Одна запись на таблицу. Счётчики строк — целые неотрицательные числа.
+One entry per table. Row counters are non-negative integers.
 
-| Ключ | Тип | Семантика |
+| Key | Type | Semantics |
 |---|---|---|
-| `table` | string | Имя таблицы (в нижнем регистре — общий «логический» регистр сверки). |
-| `pk` | array<string> | Колонки первичного ключа, по которым шёл merge (нижний регистр). Пустой массив — PK определить не удалось (см. `error`). |
-| `src_rows` | int | Строк учтено со стороны источника (прочитано потоково + зачтено по хэш-сегментам). |
-| `dst_rows` | int | Строк учтено со стороны приёмника. |
-| `matched` | int | Строк, совпавших полностью (по нормализованным значениям). |
-| `mismatched` | int | Строк с одинаковым PK, но разными значениями хотя бы в одной колонке. |
-| `missing_in_target` | int | Строк источника, отсутствующих в приёмнике. |
-| `extra_in_target` | int | Лишних строк приёмника (нет в источнике). |
-| `duplicate_pk` | int | Дубликатов первичного ключа (по обеим сторонам суммарно). |
-| `null_pk` | int | Строк с NULL в PK — merge по ним невозможен, считаются отдельной категорией расхождений. |
-| `samples` | array | Примеры расхождений, не более `sample_limit` на таблицу (см. «Элемент samples[]»). |
-| `column_mismatch_counts` | object | `{колонка: N}` — в скольких строках-`mismatch` разошлась эта колонка. Только колонки с N > 0. |
-| `warnings` | array<string> | Человекочитаемые предупреждения (не влияют на `status`): коллации текстового PK, «продолжено с чекпоинта», «hash-режим недоступен (…)» и т.п. |
-| `error` | string \| null | Текст ошибки, если таблицу сверить не удалось (нет PK, PK вне общих колонок, таблица отсутствует, ошибка БД после всех ретраев). При `error != null` счётчики недостоверны, `status == "error"`. |
-| `duration_s` | float | Длительность сверки таблицы, секунды (округление до 3 знаков). |
-| `mode` | string | Режим сверки: `"stream"` (потоковый merge) или `"hash"` (сегментные DB-side агрегаты + детализация разошедшихся сегментов). |
-| `rows_hash_matched` | int | Строк зачтено эквивалентными по совпавшим хэш-сегментам без передачи данных. В stream-режиме `0`. |
-| `rows_streamed` | int | Строк, детализированных потоково в hash-режиме (сумма src+dst по разошедшимся сегментам). В stream-режиме `0`. |
-| `segments_matched` | int | Хэш-сегментов, совпавших целиком. В stream-режиме `0`. |
-| `segments_streamed` | int | Хэш-сегментов, ушедших в потоковую детализацию. В stream-режиме `0`. |
-| `total_diffs` | int | Сумма расхождений: `mismatched + missing_in_target + extra_in_target + duplicate_pk + null_pk`. |
-| `status` | string | `"ok"` (расхождений нет), `"diff"` (есть расхождения), `"error"` (сверка не удалась). |
-| `match_pct` | float | `matched / max(src_rows, dst_rows) * 100`, округление до 4 знаков; `100.0` для пустой таблицы. |
+| `table` | string | Table name (lower-cased — the shared "logical" case used by the comparison). |
+| `pk` | array<string> | Primary key columns the merge ran on (lower case). An empty array — the PK could not be determined (see `error`). |
+| `src_rows` | int | Rows accounted for on the source side (read via streaming + credited from hash segments). |
+| `dst_rows` | int | Rows accounted for on the target side. |
+| `matched` | int | Rows that matched completely (by normalized values). |
+| `mismatched` | int | Rows with the same PK but different values in at least one column. |
+| `missing_in_target` | int | Source rows absent from the target. |
+| `extra_in_target` | int | Extra target rows (absent from the source). |
+| `duplicate_pk` | int | Primary key duplicates (both sides combined). |
+| `null_pk` | int | Rows with NULL in the PK — the merge cannot handle them, so they are counted as a separate difference category. |
+| `samples` | array | Difference samples, at most `sample_limit` per table (see "samples[] element"). |
+| `column_mismatch_counts` | object | `{column: N}` — the number of `mismatch` rows in which this column diverged. Only columns with N > 0. |
+| `warnings` | array<string> | Human-readable warnings (do not affect `status`): text PK collations, "Restored from checkpoint — not re-compared", "hash mode unavailable (…) — used streaming comparison", and the like. |
+| `error` | string \| null | Error text if the table could not be compared (no PK, PK outside the common columns, table missing, DB error after all retries). When `error != null` the counters are unreliable and `status == "error"`. |
+| `duration_s` | float | Table comparison duration, seconds (rounded to 3 digits). |
+| `mode` | string | Comparison mode: `"stream"` (streaming merge) or `"hash"` (segment-level DB-side aggregates + drill-down of diverged segments). |
+| `rows_hash_matched` | int | Rows credited as equivalent via matching hash segments, with no data transferred. `0` in stream mode. |
+| `rows_streamed` | int | Rows drilled down via streaming in hash mode (src+dst total across diverged segments). `0` in stream mode. |
+| `segments_matched` | int | Hash segments that matched in full. `0` in stream mode. |
+| `segments_streamed` | int | Hash segments sent to streaming drill-down. `0` in stream mode. |
+| `total_diffs` | int | Sum of the differences: `mismatched + missing_in_target + extra_in_target + duplicate_pk + null_pk`. |
+| `status` | string | `"ok"` (no differences), `"diff"` (differences found), `"error"` (comparison failed). |
+| `match_pct` | float | `matched / max(src_rows, dst_rows) * 100`, rounded to 4 digits; `100.0` for an empty table. |
 
-## Элемент `samples[]`
+## `samples[]` element
 
-Пример одного расхождения. Единственный объект схемы v1 со **строго**
-фиксированным набором ключей (ровно три, тест проверяет равенство):
+One difference sample. The only object in schema v1 with a **strictly**
+fixed key set (exactly three; the test checks for equality):
 
-| Ключ | Тип | Семантика |
+| Key | Type | Semantics |
 |---|---|---|
-| `kind` | string | Вид расхождения, одно из: `"missing_in_target"`, `"extra_in_target"`, `"mismatch"`, `"duplicate_pk"`, `"null_pk"`. |
-| `pk` | array | Значения PK строки в отображаемом виде: значения приводятся к строке и обрезаются до 120 символов, `null` остаётся `null`. PK **не** маскируется даже при `mask_values: true`. |
-| `columns` | object \| null | Только для `kind == "mismatch"`: `{колонка: [значение_источника, значение_приёмника]}`. Значения — отображаемые (строка ≤ 120 символов, `null`, либо `"•••"` при `mask_values: true`). Для остальных `kind` — `null`. |
+| `kind` | string | The kind of difference, one of: `"missing_in_target"`, `"extra_in_target"`, `"mismatch"`, `"duplicate_pk"`, `"null_pk"`. |
+| `pk` | array | The row's PK values in display form: values are stringified and truncated to 120 characters, `null` stays `null`. The PK is **not** masked even with `mask_values: true`. |
+| `columns` | object \| null | Only for `kind == "mismatch"`: `{column: [source_value, target_value]}`. Values are display values (a string ≤ 120 characters, `null`, or `"•••"` with `mask_values: true`). For the other `kind` values — `null`. |
 
-## Элемент `schema_diffs[]`
+## `schema_diffs[]` element
 
-| Ключ | Тип | Семантика |
+| Key | Type | Semantics |
 |---|---|---|
-| `table` | string | Имя таблицы. |
-| `missing_in_target` | array<string> | Колонки, которых нет в приёмнике. |
-| `extra_in_target` | array<string> | Лишние колонки приёмника. |
-| `type_changes` | array | Смены типов: объекты `{column, source, target}` с именем колонки и «сырыми» типами движков. |
-| `pk_mismatch` | object \| null | Различие первичных ключей: `{source: [...], target: [...]}` либо `null`. |
+| `table` | string | Table name. |
+| `missing_in_target` | array<string> | Columns absent from the target. |
+| `extra_in_target` | array<string> | Extra target columns. |
+| `type_changes` | array | Type changes: `{column, source, target}` objects with the column name and the engines' "raw" types. |
+| `pk_mismatch` | object \| null | Primary key difference: `{source: [...], target: [...]}` or `null`. |
 
 ## `config_summary`
 
-Слепок ключевых настроек прогона — для воспроизводимости и отображения
-в отчёте. Состав может расширяться минорно (правило «игнорируйте
-незнакомые ключи» действует и здесь).
+A snapshot of the run's key settings — for reproducibility and for display
+in the report. The set may grow in minor releases (the "ignore unknown
+keys" rule applies here too).
 
-| Ключ | Тип | Семантика |
+| Key | Type | Semantics |
 |---|---|---|
-| `source`, `target` | object | `{type, label, options}` эндпоинта; в `options` значения чувствительных ключей заменены на `"•••"`. |
-| `rules` | object | Все правила нормализации (`NormalizeRules`, см. `docs/config-reference.md`). |
-| `sample_limit` | int | Лимит примеров на таблицу. |
-| `batch_size` | int | Размер чанка чтения. |
-| `mask_values` | bool | Маскирование значений в samples. |
-| `workers` | int | Число параллельных потоков. |
+| `source`, `target` | object | The endpoint's `{type, label, options}`; in `options`, values of sensitive keys are replaced with `"•••"`. |
+| `rules` | object | All normalization rules (`NormalizeRules`, see `docs/config-reference.md`). |
+| `sample_limit` | int | Sample limit per table. |
+| `batch_size` | int | Read chunk size. |
+| `mask_values` | bool | Value masking in samples. |
+| `workers` | int | Number of parallel threads. |
 | `strategy` | string | `auto` \| `stream` \| `hash`. |
-| `retry_attempts` | int | Попыток на таблицу. |
-| `checkpoint` | bool | Был ли включён чекпоинт (сам путь не раскрывается). |
+| `retry_attempts` | int | Attempts per table. |
+| `checkpoint` | bool | Whether checkpointing was enabled (the path itself is not disclosed). |
 
 ## `totals`
 
-Агрегаты по всем элементам `tables[]` (суммы соответствующих счётчиков).
+Aggregates over all `tables[]` elements (sums of the corresponding counters).
 
-| Ключ | Тип | Семантика |
+| Key | Type | Semantics |
 |---|---|---|
-| `tables_total` | int | Всего посверенных таблиц (длина `tables`). |
-| `tables_ok` | int | Таблиц со `status == "ok"`. |
-| `src_rows`, `dst_rows` | int | Суммарные строки источника/приёмника. |
-| `matched`, `mismatched`, `missing_in_target`, `extra_in_target`, `duplicate_pk`, `null_pk` | int | Суммы одноимённых счётчиков таблиц. |
-| `total_diffs` | int | Сумма всех расхождений. |
-| `match_pct` | float | `matched / max(src_rows, dst_rows) * 100`, округление до 4 знаков; `100.0` при нуле строк. |
+| `tables_total` | int | Total number of compared tables (length of `tables`). |
+| `tables_ok` | int | Tables with `status == "ok"`. |
+| `src_rows`, `dst_rows` | int | Total source/target rows. |
+| `matched`, `mismatched`, `missing_in_target`, `extra_in_target`, `duplicate_pk`, `null_pk` | int | Sums of the same-named per-table counters. |
+| `total_diffs` | int | Sum of all differences. |
+| `match_pct` | float | `matched / max(src_rows, dst_rows) * 100`, rounded to 4 digits; `100.0` when there are zero rows. |
 
-## Пример отчёта
+## Example report
 
-Реальный вывод демо-прогона (`dbparity demo`); `samples` сокращены
-до пары элементов на таблицу.
+Actual output of a demo run (`dbparity demo`); `samples` are trimmed
+to a couple of items per table.
 
 ```json
 {
   "schema_version": 1,
-  "source_label": "Oracle PROD (эмуляция)",
+  "source_label": "Oracle PROD (emulated)",
   "target_label": "PostgreSQL NEW",
   "started_at": "2026-07-02 21:19:57.637393+00:00",
   "finished_at": "2026-07-02 21:19:57.675259+00:00",
@@ -164,7 +164,7 @@
           "kind": "mismatch",
           "pk": ["10"],
           "columns": {
-            "name": ["Алексей Петрова", "Алексей Петрова (переименован)"]
+            "name": ["Alexey Petrov", "Alexey Petrov (renamed)"]
           }
         },
         {
@@ -262,7 +262,7 @@
   "config_summary": {
     "source": {
       "type": "sqlite",
-      "label": "Oracle PROD (эмуляция)",
+      "label": "Oracle PROD (emulated)",
       "options": {
         "path": "/tmp/dbparity_demo/source_oracle_like.db",
         "dialect_emulation": "oracle"
@@ -310,8 +310,8 @@
 }
 ```
 
-## История версий схемы
+## Schema version history
 
-| `schema_version` | Изменения |
+| `schema_version` | Changes |
 |---|---|
-| 1 | Первая замороженная версия (DBParity 0.5.x). |
+| 1 | First frozen version (DBParity 0.5.x). |

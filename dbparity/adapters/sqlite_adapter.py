@@ -1,8 +1,9 @@
-"""SQLite-адаптер: демо, тесты и эмуляция диалектов.
+"""SQLite adapter: demos, tests, and dialect emulation.
 
-Опция dialect_emulation позволяет прогнать диалект-специфичные правила
-нормализации (например, oracle: ''==NULL) на sqlite-данных.
-Digest-функции (md5hex/hex2int) регистрируются как Python-функции.
+The dialect_emulation option makes it possible to exercise
+dialect-specific normalization rules (e.g. oracle: ''==NULL) on sqlite
+data. The digest functions (md5hex/hex2int) are registered as Python
+functions.
 """
 from __future__ import annotations
 
@@ -63,7 +64,7 @@ class SQLiteAdapter(Adapter):
         super().__init__(endpoint)
         path = endpoint.options.get("path")
         if not path:
-            raise ValueError("sqlite: в конфиге требуется параметр path")
+            raise ValueError("sqlite: the 'path' option is required")
         self.path = path
         self.conn = sqlite3.connect(path)
         self.conn.create_function("md5hex", 1, _md5hex, deterministic=True)
@@ -96,10 +97,11 @@ class SQLiteAdapter(Adapter):
                            pk=[n for _, n in sorted(pk)])
 
     def _order_term(self, col: str, logical: str | None = None) -> str:
-        """Элемент ORDER BY: текстовые колонки — явно в бинарной коллации.
+        """An ORDER BY term: text columns — explicitly in binary collation.
 
-        Дефолтная коллация sqlite и так BINARY, но пишем явно — это
-        контрактная гарантия, а не совпадение настроек.
+        sqlite's default collation is BINARY anyway, but we write it
+        explicitly — it is a contract guarantee, not a coincidence of
+        settings.
         """
         q = self._quote(col)
         return f"{q} COLLATE BINARY" if logical == "text" else q
@@ -107,7 +109,7 @@ class SQLiteAdapter(Adapter):
     def _stream_sql(self, table: str, columns: Sequence[str],
                     order_by: Sequence[str], pk_range=None,
                     order_logicals: Sequence[str] | None = None):
-        """(sql, params) для stream_rows — вынесено для юнит-тестов."""
+        """(sql, params) for stream_rows — extracted for unit tests."""
         cols_sql = ", ".join(self._quote(c) for c in columns)
         logs = order_logicals or [None] * len(order_by)
         order_sql = ", ".join(
@@ -115,7 +117,7 @@ class SQLiteAdapter(Adapter):
         where, params = "", ()
         if pk_range is not None:
             col, lo, hi = pk_range
-            if hi is None:      # открытый диапазон — для resume с watermark
+            if hi is None:      # open range — for resume with a watermark
                 where = f" WHERE {self._quote(col)} >= ?"
                 params = (lo,)
             else:
@@ -156,8 +158,8 @@ class SQLiteAdapter(Adapter):
     def _canon(self, col: str, logical: str, rtrim: bool) -> str:
         q = self._quote(col)
         if logical == "number":
-            # инъективно; целые без '.0', чтобы совпадать с trim_scale (PG)
-            # и TM9 (Oracle): 100.0 → '100', 1.5 → '1.5'
+            # injective; integers without '.0' to match trim_scale (PG)
+            # and TM9 (Oracle): 100.0 → '100', 1.5 → '1.5'
             return (f"CASE WHEN {q} IS NULL THEN 'N' "
                     f"WHEN CAST({q} AS INTEGER) = {q} "
                     f"THEN CAST(CAST({q} AS INTEGER) AS TEXT) "

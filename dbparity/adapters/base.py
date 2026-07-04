@@ -1,4 +1,4 @@
-"""Базовый интерфейс адаптера БД."""
+"""Base database adapter interface."""
 from __future__ import annotations
 
 import abc
@@ -10,7 +10,7 @@ from typing import Iterator, List, Sequence
 class ColumnSchema:
     name: str
     logical: str          # text | number | float | bool | datetime | date | bytes
-    raw: str = ""         # исходное имя типа движка
+    raw: str = ""         # the engine's original type name
 
 
 @dataclass
@@ -21,14 +21,14 @@ class TableSchema:
 
 
 class Adapter(abc.ABC):
-    """Диалект-независимый контракт: ядро видит только этот интерфейс."""
+    """Dialect-independent contract: the core sees only this interface."""
 
     dialect = "generic"
 
-    # Умеет ли адаптер сортировать текстовые ORDER BY-колонки в бинарной
-    # коллации (см. order_logicals в stream_rows). Все встроенные адаптеры
-    # умеют; сторонний адаптер без поддержки обязан выставить False —
-    # тогда движок оставит предупреждение о коллациях вместо гарантии.
+    # Whether the adapter can sort text ORDER BY columns in binary
+    # collation (see order_logicals in stream_rows). All built-in adapters
+    # can; a third-party adapter without support must set False —
+    # then the engine leaves a collation warning instead of a guarantee.
     binary_collation_supported = True
 
     def __init__(self, endpoint):
@@ -50,29 +50,30 @@ class Adapter(abc.ABC):
         order_by: Sequence[str], batch: int,
         pk_range=None, order_logicals: Sequence[str] | None = None,
     ) -> Iterator[tuple]:
-        """Строки в порядке ORDER BY <order_by>, чанками по batch.
+        """Rows in ORDER BY <order_by> order, in chunks of batch.
 
-        pk_range=(col, lo, hi) — необязательный фильтр lo <= col <= hi
-        (используется hash-режимом для детализации сегментов).
+        pk_range=(col, lo, hi) — an optional filter lo <= col <= hi
+        (used by hash mode to detail segments).
 
-        order_logicals — необязательный список логических типов колонок
-        order_by (параллельный список). Если задан, ТЕКСТОВЫЕ колонки
-        сортируются в бинарной коллации движка (COLLATE BINARY / "C" /
-        NLSSORT BINARY / Latin1_General_BIN2) — так порядок merge-сравнения
-        совпадает между движками независимо от их коллаций по умолчанию.
-        None — прежнее поведение (сортировка по умолчанию движка).
+        order_logicals — an optional list of logical types of the order_by
+        columns (a parallel list). If given, TEXT columns are sorted in the
+        engine's binary collation (COLLATE BINARY / "C" /
+        NLSSORT BINARY / Latin1_General_BIN2) — so the merge-comparison
+        order matches across engines regardless of their default collations.
+        None — the previous behavior (the engine's default sorting).
         """
         ...
 
-    # ---- digest-API для сегментных хэшей (hash-режим) -----------------------
-    # Контракт: canonical-представление обязано быть ИНЪЕКТИВНЫМ по колонке
-    # (разные значения → разные строки). Неидеальная канонизация эквивалентных
-    # значений лишь вызывает спуск в row-режим (медленнее), но не ложный skip.
+    # ---- digest API for segment hashes (hash mode) ---------------------------
+    # Contract: the canonical representation must be INJECTIVE per column
+    # (different values → different strings). Imperfect canonicalization of
+    # equivalent values only causes a descent into row mode (slower), but
+    # not a false skip.
 
     supports_digest = False
 
     def pk_bounds(self, table: str, pk_col: str):
-        """(min, max) значений PK без NULL; (None, None) если таблица пуста."""
+        """(min, max) of PK values without NULLs; (None, None) if the table is empty."""
         raise NotImplementedError
 
     def null_pk_count(self, table: str, pk_col: str) -> int:
@@ -80,12 +81,12 @@ class Adapter(abc.ABC):
 
     def bucket_digests(self, table: str, columns, logicals, pk_col: str,
                        lo, step: int, hi, rtrim: bool = False) -> dict:
-        """Агрегаты канонических строк по бакетам PK за ОДИН скан.
+        """Aggregates of canonical strings over PK buckets in ONE scan.
 
-        bucket = floor((pk - lo) / step); возвращает
-        {bucket: (count, s1, s2, s3)} для PK в [lo, hi].
+        bucket = floor((pk - lo) / step); returns
+        {bucket: (count, s1, s2, s3)} for PK in [lo, hi].
         """
         raise NotImplementedError
 
-    def close(self) -> None:  # noqa: B027 — переопределяется при необходимости
+    def close(self) -> None:  # noqa: B027 — overridden when necessary
         pass

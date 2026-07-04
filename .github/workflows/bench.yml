@@ -1,8 +1,8 @@
 name: Benchmark
 
-# Бенчмарк-матрица против регрессий производительности (роадмап v0.3).
-# Пороги — консервативный пол для CI-раннеров (~2x ниже локальных цифр):
-# раннеры GitHub медленнее и шумнее локальной машины.
+# Benchmark matrix against performance regressions (roadmap v0.3).
+# The thresholds are a conservative floor for CI runners (~2x below local
+# figures): GitHub runners are slower and noisier than a local machine.
 
 on:
   pull_request:
@@ -18,10 +18,10 @@ jobs:
           python-version: "3.12"
       - run: pip install -e .
 
-      - name: Бенчмарк (200K строк на сторону)
+      - name: Benchmark (200K rows per side)
         run: python3 bench/bench.py 200000 --json bench.json
 
-      - name: Проверка регрессии
+      - name: Regression check
         run: |
           python3 - <<'PY'
           import json
@@ -29,26 +29,26 @@ jobs:
 
           data = json.load(open("bench.json", encoding="utf-8"))
 
-          FASTPATH_MIN = 150_000   # строк/с
-          GENERIC_MIN = 100_000    # строк/с
+          FASTPATH_MIN = 150_000   # rows/s
+          GENERIC_MIN = 100_000    # rows/s
 
           errors = []
           if data["fastpath_rows_per_s"] < FASTPATH_MIN:
-              errors.append(f"fast-path: {data['fastpath_rows_per_s']} < {FASTPATH_MIN} строк/с")
+              errors.append(f"fast-path: {data['fastpath_rows_per_s']} < {FASTPATH_MIN} rows/s")
           if data["generic_rows_per_s"] < GENERIC_MIN:
-              errors.append(f"generic: {data['generic_rows_per_s']} < {GENERIC_MIN} строк/с")
+              errors.append(f"generic: {data['generic_rows_per_s']} < {GENERIC_MIN} rows/s")
           if data["diffs_ok"] is not True:
-              errors.append("diffs_ok != true: счётчики расхождений не совпали с ожидаемыми")
+              errors.append("diffs_ok != true: planted-diff counters did not match the expected values")
 
           if errors:
-              print("Регрессия производительности/корректности:")
+              print("Performance/correctness regression:")
               for e in errors:
                   print(" -", e)
               sys.exit(1)
-          print("Пороги пройдены.")
+          print("Thresholds passed.")
           PY
 
-      - name: Публикация результатов в step summary
+      - name: Publish results to the step summary
         if: always()
         run: |
           python3 - <<'PY'
@@ -58,23 +58,23 @@ jobs:
 
           p = Path("bench.json")
           if not p.exists():
-              raise SystemExit(0)   # бенч упал до записи метрик — публиковать нечего
+              raise SystemExit(0)   # the bench failed before writing metrics — nothing to publish
           d = json.loads(p.read_text(encoding="utf-8"))
 
           def num(x: int) -> str:
               return f"{x:,}".replace(",", " ")
 
           lines = [
-              "## Бенчмарк ядра сравнения",
+              "## Compare core benchmark",
               "",
-              f"Строк на сторону: **{num(d['n'])}**",
+              f"Rows per side: **{num(d['n'])}**",
               "",
-              "| Метрика | Значение |",
+              "| Metric | Value |",
               "|---|---:|",
-              f"| generic (строк/с) | {num(d['generic_rows_per_s'])} |",
-              f"| fast-path (строк/с) | {num(d['fastpath_rows_per_s'])} |",
-              f"| hash: строк потоково | {num(d['hash_rows_streamed'])} |",
-              f"| hash: строк всего | {num(d['hash_total_rows'])} |",
+              f"| generic (rows/s) | {num(d['generic_rows_per_s'])} |",
+              f"| fast-path (rows/s) | {num(d['fastpath_rows_per_s'])} |",
+              f"| hash: rows streamed | {num(d['hash_rows_streamed'])} |",
+              f"| hash: rows total | {num(d['hash_total_rows'])} |",
               f"| diffs_ok | {d['diffs_ok']} |",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

@@ -1,4 +1,4 @@
-"""Оркестратор: схемы → сверка таблиц (параллельно, с retry и resume) → RunResult."""
+"""Orchestrator: schemas → table comparison (parallel, with retry and resume) → RunResult."""
 from __future__ import annotations
 
 import time
@@ -20,11 +20,11 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
                  ss, ds, norm_src: Normalizer, norm_dst: Normalizer,
                  on_progress, resume_snapshot=None, checkpoint_cb=None,
                  incr_state=None, full: bool = False) -> TableResult:
-    """Сверка одной таблицы. Ошибки БД ПРОБРАСЫВАЮТСЯ (retry решает вызывающий).
+    """Compare a single table. DB errors PROPAGATE (the caller handles retry).
 
-    incr_state — IncrementalState (инкрементальный режим), full=True —
-    игнорировать сохранённый watermark (полная сверка), но максимум
-    watermark-колонки всё равно отслеживается для обновления стейта.
+    incr_state — IncrementalState (incremental mode), full=True —
+    ignore the saved watermark (full comparison), but the maximum of the
+    watermark column is still tracked to update the state.
     """
     t0 = time.perf_counter()
     src_names = {c.name.lower(): c.name for c in ss.columns}
@@ -34,25 +34,25 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
                    if c.name.lower() in dst_names
                    and c.name.lower() not in excluded]
     pk = config.pk_overrides.get(t) or [p.lower() for p in ss.pk]
-    wm_col = config.incremental.get(t)      # watermark-колонка либо None
+    wm_col = config.incremental.get(t)      # watermark column or None
 
     if not pk:
         tr = TableResult(table=t, pk=[], error=(
-            "Не удалось определить первичный ключ — задайте pk_overrides"))
+            "Could not determine a primary key — set pk_overrides"))
     elif any(p not in common_cols for p in pk):
         tr = TableResult(table=t, pk=pk, error=(
-            "PK-колонки отсутствуют в общем наборе колонок обеих таблиц"))
+            "PK columns are missing from the common column set of both tables"))
     elif wm_col is not None and wm_col not in common_cols:
         tr = TableResult(table=t, pk=pk, error=(
-            f"Инкрементальный режим: watermark-колонка '{wm_col}' "
-            f"отсутствует в общем наборе колонок обеих таблиц — "
-            f"проверьте карту incremental в конфиге"))
+            f"Incremental mode: watermark column '{wm_col}' "
+            f"is missing from the common column set of both tables — "
+            f"check the incremental map in the config"))
     else:
         src_log = {c.name.lower(): c.logical for c in ss.columns}
         dst_log = {c.name.lower(): c.logical for c in ds.columns}
-        # Текстовые PK: порядок merge зависит от коллаций движков (Oracle
-        # BINARY vs PG locale). Если оба адаптера умеют бинарную сортировку —
-        # навязываем её обеим сторонам через order_logicals.
+        # Text PKs: merge order depends on engine collations (Oracle
+        # BINARY vs PG locale). If both adapters support binary sorting —
+        # enforce it on both sides via order_logicals.
         pk_text = [p for p in pk
                    if src_log.get(p) == "text" or dst_log.get(p) == "text"]
         binary_sort = bool(pk_text) \
@@ -61,13 +61,13 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
         progress = (lambda n: on_progress(t, n)) if on_progress else None
         eligible, why = digest_eligible(
             config, src, dst, pk, common_cols, src_log, dst_log)
-        # hash-режим несовместим с инкрементом (watermark отслеживается
-        # только при потоковом merge) — инкремент побеждает
+        # hash mode is incompatible with incremental (the watermark is tracked
+        # only during streaming merge) — incremental wins
         incr_beats_hash = eligible and wm_col is not None
         if incr_beats_hash:
-            eligible, why = False, "инкрементальный режим"
-        incr_wm = None          # применённый инкрементальный фильтр (значение)
-        full_skip = False       # full=True проигнорировал сохранённый watermark
+            eligible, why = False, "incremental mode"
+        incr_wm = None          # applied incremental filter (value)
+        full_skip = False       # full=True ignored the saved watermark
         if eligible:
             tr = hash_compare_table(
                 t, src, dst, src_name, dst_name, common_cols, pk[0],
@@ -80,27 +80,28 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
             if resume_snapshot is not None and len(pk) == 1:
                 initial, start_from = resume_snapshot
                 initial.warnings.append(
-                    "Продолжено с чекпоинта (watermark PK "
+                    "Resumed from checkpoint (PK watermark "
                     f"{start_from!r})")
             src_range = ((src_names[pk[0]], start_from, None)
                          if start_from is not None else None)
             dst_range = ((dst_names[pk[0]], start_from, None)
                          if start_from is not None else None)
-            # --- инкрементальный фильтр по watermark-колонке ----------------
-            # pk_range адаптеров фильтрует по ЛЮБОЙ колонке (lo <= col),
-            # сортировка остаётся по PK — merge корректен. Максимум колонки
-            # отслеживается ВСЕГДА (track_kw), даже при full=True.
+            # --- incremental filter on the watermark column -----------------
+            # The adapters' pk_range filters on ANY column (lo <= col),
+            # sorting stays on the PK — the merge is correct. The column
+            # maximum is tracked ALWAYS (track_kw), even with full=True.
             track_kw = {}
             if wm_col is not None:
                 track_kw = {"track_max_idx": common_cols.index(wm_col)}
                 last_wm = (incr_state.last_watermark(t)
                            if incr_state is not None else None)
                 if last_wm is not None and start_from is not None:
-                    # resume-снапшот занял pk_range PK-watermark'ом —
-                    # инкремент и resume взаимоисключимы для таблицы
+                    # the resume snapshot occupied pk_range with the PK
+                    # watermark — incremental and resume are mutually
+                    # exclusive for a table
                     initial.warnings.append(
-                        "Возобновление с чекпоинта: инкрементальный фильтр "
-                        "в этом прогоне не применялся")
+                        "Resuming from checkpoint: incremental filter "
+                        "not applied in this run")
                 elif last_wm is not None and full:
                     full_skip = True
                 elif last_wm is not None:
@@ -111,9 +112,9 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
             if checkpoint_cb is not None and len(pk) == 1:
                 ckpt_kw = {"checkpoint": checkpoint_cb,
                            "checkpoint_every": config.checkpoint_every_rows}
-            # order_logicals передаём только при текстовом PK: для числовых
-            # PK он ничего не меняет, а обёртки stream_rows со старой
-            # сигнатурой (тесты, сторонние адаптеры) остаются совместимыми
+            # order_logicals is passed only for a text PK: for numeric
+            # PKs it changes nothing, and stream_rows wrappers with the old
+            # signature (tests, third-party adapters) remain compatible
             src_bin = ({"order_logicals": [src_log[p] for p in pk]}
                        if binary_sort else {})
             dst_bin = ({"order_logicals": [dst_log[p] for p in pk]}
@@ -140,43 +141,43 @@ def _compare_one(src, dst, config: Config, t: str, src_name: str, dst_name: str,
             )
         if incr_beats_hash:
             tr.warnings.append(
-                f"Инкрементальный режим: hash-сверка отключена — "
-                f"потоковая сверка (watermark-колонка '{wm_col}')")
+                f"Incremental mode: hash comparison disabled — "
+                f"streaming (watermark column '{wm_col}')")
         if incr_wm is not None:
             tr.warnings.append(
-                f"Инкрементальная сверка: строки с {wm_col} >= {incr_wm!r}; "
-                f"missing/extra среди изменённых строк = дрейф dual-write")
+                f"Incremental run: rows with {wm_col} >= {incr_wm!r}; "
+                f"missing/extra among changed rows indicate dual-write drift")
         if full_skip:
             tr.warnings.append(
-                "Полная сверка (--full): сохранённый watermark проигнорирован, "
-                "стейт будет обновлён")
+                "Full run (--full): saved watermark ignored, "
+                "state will be updated")
         if config.strategy == "hash" and not eligible and not incr_beats_hash:
             tr.warnings.append(
-                f"hash-режим недоступен ({why}) — использована потоковая сверка")
+                f"hash mode unavailable ({why}) — used streaming comparison")
         if pk_text and binary_sort:
             tr.warnings.append(
-                f"PK содержит текстовые колонки ({', '.join(pk_text)}): "
-                "применена бинарная сортировка на обеих сторонах — "
-                "порядок merge не зависит от коллаций движков")
+                f"PK contains text columns ({', '.join(pk_text)}): "
+                "binary collation applied on both sides — "
+                "merge order does not depend on engine collations")
         elif pk_text:
             tr.warnings.append(
-                f"PK содержит текстовые колонки ({', '.join(pk_text)}): "
-                "порядок сортировки может различаться между движками "
-                "из-за коллаций. Проверьте COLLATE/NLS_SORT или "
-                "используйте числовой PK.")
+                f"PK contains text columns ({', '.join(pk_text)}): "
+                "sort order may differ between engines "
+                "due to collation. Check COLLATE/NLS_SORT or "
+                "use a numeric PK.")
     tr.duration_s = round(time.perf_counter() - t0, 3)
     return tr
 
 
 def run(config: Config, on_progress=None, resume: bool = False,
         full: bool = False) -> RunResult:
-    """Выполняет сверку.
+    """Runs the comparison.
 
-    on_progress(table, rows_done) — колбэк прогресса (из потоков при workers>1).
-    resume=True — продолжить с чекпоинта (файл из config.checkpoint либо
-    авто-имя .dbparity_ckpt_<fp>.json).
-    full=True — игнорировать сохранённые инкрементальные watermark'и
-    (полная сверка); новый watermark по итогам прогона всё равно фиксируется.
+    on_progress(table, rows_done) — progress callback (from threads when workers>1).
+    resume=True — resume from a checkpoint (file from config.checkpoint or
+    the auto-name .dbparity_ckpt_<fp>.json).
+    full=True — ignore saved incremental watermarks
+    (full comparison); the new watermark is still recorded after the run.
     """
     started = datetime.now(timezone.utc)
     src = build_adapter(config.source)
@@ -196,15 +197,16 @@ def run(config: Config, on_progress=None, resume: bool = False,
             if t not in common:
                 results.append(TableResult(
                     table=t, pk=[],
-                    error="Таблица отсутствует в источнике и/или приёмнике"))
+                    error="Table is missing in source and/or target"))
         common = [t for t in wanted if t in common]
 
     src_schemas = {t: src.table_schema(src_tables[t]) for t in common}
     dst_schemas = {t: dst.table_schema(dst_tables[t]) for t in common}
     schema_diffs = diff_schemas(src_schemas, dst_schemas)
 
-    # схемная фаза окончена: каждая таблица получит свои соединения,
-    # держать эти дальше незачем (и вредно для однопоточных окружений)
+    # the schema phase is over: each table gets its own connections,
+    # no reason to keep these any longer (and it is harmful for
+    # single-threaded environments)
     for a in (src, dst):
         try:
             a.close()
@@ -220,8 +222,9 @@ def run(config: Config, on_progress=None, resume: bool = False,
         path = config.checkpoint or f".dbparity_ckpt_{fp[:12]}.json"
         ckpt = Checkpointer.load_or_create(path, fp, resume)
 
-    # Инкрементальный стейт создаётся только при непустой карте incremental;
-    # запись потокобезопасна (лок внутри IncrementalState) — workers>1 ок
+    # The incremental state is created only when the incremental map is
+    # non-empty; writes are thread-safe (lock inside IncrementalState) —
+    # workers>1 is fine
     incr = None
     if config.incremental:
         ifp = state_fingerprint(config)
@@ -232,7 +235,7 @@ def run(config: Config, on_progress=None, resume: bool = False,
             done = ckpt.done_table(t)
             if done is not None:
                 done.warnings.append(
-                    "Восстановлена из чекпоинта — сверка не повторялась")
+                    "Restored from checkpoint — not re-compared")
                 return done
         attempts = max(1, config.retry_attempts)
         last_err = None
@@ -242,7 +245,7 @@ def run(config: Config, on_progress=None, resume: bool = False,
                 s2 = build_adapter(config.source)
                 d2 = build_adapter(config.target)
                 snap = cb = None
-                if ckpt is not None:      # partial-слоты потокобезопасны
+                if ckpt is not None:      # partial slots are thread-safe
                     snap = ckpt.current_snapshot(t)
                     cb = (lambda tr, wm, _t=t: ckpt.snapshot(_t, tr, wm))
                 tr = _compare_one(s2, d2, config, t, src_tables[t],
@@ -254,14 +257,14 @@ def run(config: Config, on_progress=None, resume: bool = False,
                 if ckpt is not None:
                     ckpt.table_done(tr)
                 if incr is not None and tr.error is None:
-                    # max_tracked — динамический атрибут compare_table
-                    # (максимум watermark-колонки); None (нет строк) —
-                    # оставляем старый watermark
+                    # max_tracked — a dynamic attribute of compare_table
+                    # (maximum of the watermark column); None (no rows) —
+                    # keep the old watermark
                     new_wm = getattr(tr, "max_tracked", None)
                     if new_wm is not None:
-                        incr.update(t, new_wm)  # update() сохраняет под локом
+                        incr.update(t, new_wm)  # update() saves under a lock
                 return tr
-            except Exception as e:  # noqa: BLE001 — сетевые/БД ошибки → retry
+            except Exception as e:  # noqa: BLE001 — network/DB errors → retry
                 last_err = e
                 if attempt < attempts:
                     time.sleep(config.retry_backoff_s * attempt)
@@ -275,7 +278,7 @@ def run(config: Config, on_progress=None, resume: bool = False,
         return TableResult(
             table=t, pk=[],
             error=f"{type(last_err).__name__}: {last_err} "
-                  f"(после {attempts} попыт.)")
+                  f"(after {attempts} attempt(s))")
 
     if config.workers > 1 and len(common) > 1:
         with ThreadPoolExecutor(max_workers=config.workers) as ex:
@@ -288,9 +291,10 @@ def run(config: Config, on_progress=None, resume: bool = False,
         ckpt.finish(delete=all(t.error is None for t in results))
 
     if incr is not None:
-        # История прогонов (v0.5): точка тренда дрейфа для отчёта-таймлайна.
-        # Пишем только таблицы из карты incremental — прочие не относятся
-        # к сценарию dual-write и лишь зашумили бы график.
+        # Run history (v0.5): a drift-trend data point for the timeline
+        # report. We record only tables from the incremental map — the rest
+        # are unrelated to the dual-write scenario and would only add noise
+        # to the chart.
         tracked = [t for t in results if t.table in config.incremental]
         incr.record_run({
             "ts": datetime.now(timezone.utc).isoformat(),

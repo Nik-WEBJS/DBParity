@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru" data-bs-theme="light">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>DBParity — таймлайн дрейфа</title>
+  <title>DBParity — drift timeline</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -17,13 +17,13 @@
   <header class="navbar navbar-expand-md d-print-none">
     <div class="container-xl">
       <h1 class="navbar-brand navbar-brand-autodark mb-0">
-        <span class="badge bg-blue text-white me-2">DB</span>Parity · Таймлайн дрейфа
+        <span class="badge bg-blue text-white me-2">DB</span>Parity · Drift timeline
       </h1>
       <div class="navbar-nav flex-row order-md-last align-items-center gap-2">
         <span class="badge bg-azure-lt">{{ source_label }}</span>
         <span class="text-secondary">→</span>
         <span class="badge bg-indigo-lt">{{ target_label }}</span>
-        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Тема</button>
+        <button class="btn btn-sm ms-3" onclick="toggleTheme()">Theme</button>
       </div>
     </div>
   </header>
@@ -32,20 +32,20 @@
     <div class="page-body">
       <div class="container-xl">
 
-        {# ---------- Вердикт по последнему прогону ---------- #}
+        {# ---------- Verdict for the latest run ---------- #}
         {% if not history %}
         <div class="alert alert-secondary" role="alert">
-          <h2 class="alert-heading mb-1">История пуста</h2>
-          <div>Ни одного инкрементального прогона ещё не записано —
-            выполните <code>dbparity compare</code> с картой incremental.</div>
+          <h2 class="alert-heading mb-1">History is empty</h2>
+          <div>No incremental runs have been recorded yet —
+            run <code>dbparity compare</code> with an incremental map.</div>
         </div>
         {% elif last.equivalent %}
         <div class="alert alert-success" role="alert">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-              <h2 class="alert-heading mb-1">ДРЕЙФ НУЛЕВОЙ — можно переключаться</h2>
-              <div>Последний прогон ({{ last.ts | ts }}) расхождений между
-                источником и приёмником не обнаружил.</div>
+              <h2 class="alert-heading mb-1">ZERO DRIFT — safe to cut over</h2>
+              <div>The latest run ({{ last.ts | ts }}) found no differences
+                between source and target.</div>
             </div>
             <div class="verdict-num">0</div>
           </div>
@@ -54,9 +54,9 @@
         <div class="alert alert-danger" role="alert">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-              <h2 class="alert-heading mb-1">ДРЕЙФ НЕ НУЛЕВОЙ</h2>
-              <div>Последний прогон ({{ last.ts | ts }}): расхождений
-                <b>{{ last_total | num }}</b> — переключаться рано.</div>
+              <h2 class="alert-heading mb-1">Drift: {{ last_total | num }}</h2>
+              <div>Latest run ({{ last.ts | ts }}): <b>{{ last_total | num }}</b>
+                differences — too early to cut over.</div>
             </div>
             <div class="verdict-num">{{ last_total | num }}</div>
           </div>
@@ -68,54 +68,52 @@
         <div class="row row-deck row-cards mb-3">
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Прогонов всего</div>
-              <div class="h1 mb-0">{{ runs_total | num }}
-                <span class="fs-4 text-secondary">/ full: {{ runs_full | num }}</span></div>
+              <div class="subheader">Runs</div>
+              <div class="h1 mb-0">{{ runs_total | num }}</div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Последний дрейф</div>
+              <div class="subheader">Full runs</div>
+              <div class="h1 mb-0">{{ runs_full | num }}</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="card"><div class="card-body">
+              <div class="subheader">Latest drift</div>
               <div class="h1 mb-0 {{ 'text-danger' if last_total else 'text-success' }}">{{ last_total | num }}</div>
             </div></div>
           </div>
           <div class="col-6 col-lg-3">
             <div class="card"><div class="card-body">
-              <div class="subheader">Тренд</div>
+              <div class="subheader">Trend</div>
               <div class="h1 mb-0">
                 <span class="trend-arrow text-{{ trend.cls }}">{{ trend.arrow }}</span>
                 <span class="fs-4 text-secondary ms-1">{{ trend.note }}</span>
               </div>
             </div></div>
           </div>
-          <div class="col-6 col-lg-3">
-            <div class="card"><div class="card-body">
-              <div class="subheader">Последний прогон</div>
-              <div class="h3 mb-0">{{ last.ts | ts }}</div>
-              <span class="badge {{ 'bg-purple-lt' if last.full else 'bg-cyan-lt' }} mt-1">{{ 'full' if last.full else 'incr' }}</span>
-            </div></div>
-          </div>
         </div>
 
-        {# ---------- Line-chart дрейфа ---------- #}
+        {# ---------- Drift line chart ---------- #}
         <div class="card mb-3">
           <div class="card-body">
-            <h3 class="card-title">Дрейф (total_diffs) по прогонам</h3>
+            <h3 class="card-title">Drift (total_diffs) by run</h3>
             <div class="chart-box"><canvas id="timeline"></canvas></div>
           </div>
         </div>
 
-        {# ---------- Последние прогоны ---------- #}
+        {# ---------- Recent runs ---------- #}
         <div class="card mb-3">
           <div class="card-header">
-            <h3 class="card-title">Последние {{ recent | length }} прогонов
-              <span class="text-secondary">(свежие сверху)</span></h3>
+            <h3 class="card-title">Last {{ recent | length }} runs
+              <span class="text-secondary">(most recent first)</span></h3>
           </div>
           <div class="table-responsive">
             <table class="table table-vcenter card-table">
               <thead><tr>
-                <th>Время</th><th>Режим</th><th>Дрейф по таблицам</th>
-                <th class="text-end">Всего</th><th>Статус</th>
+                <th>Time</th><th>Mode</th><th>Drift by table</th>
+                <th class="text-end">Σ</th><th>Status</th>
               </tr></thead>
               <tbody>
               {% for h, total in recent %}
@@ -142,8 +140,8 @@
 
         <footer class="footer footer-transparent d-print-none py-3">
           <div class="text-secondary">
-            Сгенерировано DBParity v{{ version }} · {{ generated }} ·
-            прогонов в истории: {{ runs_total | num }}
+            Generated by DBParity v{{ version }} · {{ generated }} ·
+            runs in history: {{ runs_total | num }}
           </div>
         </footer>
       </div>
@@ -169,7 +167,7 @@ new Chart(document.getElementById("timeline"), {
   data: {
     labels: CHART.labels,
     datasets: [
-      { label: "Суммарный дрейф", data: CHART.total,
+      { label: "Total", data: CHART.total,
         borderColor: "#206bc4", backgroundColor: "rgba(32,107,196,.12)",
         borderWidth: 3, tension: .25, pointRadius: 3, fill: true },
       ...CHART.series.map((s, i) => ({

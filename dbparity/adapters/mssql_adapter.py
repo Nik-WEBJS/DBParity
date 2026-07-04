@@ -1,8 +1,8 @@
-"""MSSQL-адаптер (pyodbc): подключение, стриминг и digest-API.
+"""MSSQL adapter (pyodbc): connection, streaming, and the digest API.
 
-Требует пакет pyodbc и системный ODBC-драйвер (msodbcsql18).
-Подключение — либо готовой ODBC-строкой (options.dsn), либо по частям
-host/port/database/user/password (строка собирается адаптером).
+Requires the pyodbc package and a system ODBC driver (msodbcsql18).
+Connection — either a ready-made ODBC string (options.dsn) or the
+host/port/database/user/password parts (the adapter assembles the string).
 """
 from __future__ import annotations
 
@@ -14,31 +14,31 @@ from .base import Adapter, ColumnSchema, TableSchema
 
 try:
     import pyodbc
-    # ODBC-пул переиспользует сессии (и их контекст: текущая БД, SET-опции)
-    # между "новыми" соединениями с одинаковой строкой. Для верификатора
-    # такая скрытая общность состояния недопустима — каждый адаптер обязан
-    # получать честную свежую сессию.
+    # The ODBC pool reuses sessions (and their context: current DB, SET
+    # options) between "new" connections with the same string. For a
+    # verifier such hidden shared state is unacceptable — every adapter
+    # must get a genuinely fresh session.
     pyodbc.pooling = False
 except ImportError:  # pragma: no cover
     pyodbc = None
 
 _DEFAULT_DRIVER = "ODBC Driver 18 for SQL Server"
 
-# ODBC-код типа datetimeoffset (SQL_SS_TIMESTAMPOFFSET): pyodbc не знает
-# этот проприетарный тип и без конвертера падает с "ODBC SQL type -155
-# is not yet supported" на первом же fetch.
+# The ODBC type code of datetimeoffset (SQL_SS_TIMESTAMPOFFSET): pyodbc
+# does not know this proprietary type and, without a converter, fails with
+# "ODBC SQL type -155 is not yet supported" on the very first fetch.
 _SQL_SS_TIMESTAMPOFFSET = -155
 
 
 def _decode_datetimeoffset(raw: bytes) -> datetime:  # pragma: no cover
-    """Бинарная структура datetimeoffset → aware datetime.
+    """The binary datetimeoffset structure → an aware datetime.
 
-    Формат SQL Server: год..секунда (6 × int16), доли секунды в
-    наносекундах (uint32), смещение таймзоны часы/минуты (2 × int16,
-    оба со знаком: -05:30 приходит как (-5, -30)). Наносекунды
-    усекаются до микросекунд Python. Дальше нормализатор приводит
-    aware-значения к naive UTC (правило tz_to_utc) — сравнение с
-    другими движками корректно.
+    SQL Server format: year..second (6 × int16), fractional seconds in
+    nanoseconds (uint32), timezone offset hours/minutes (2 × int16,
+    both signed: -05:30 arrives as (-5, -30)). Nanoseconds are
+    truncated to Python microseconds. The normalizer then converts
+    aware values to naive UTC (the tz_to_utc rule) — comparison with
+    other engines is correct.
     """
     y, mo, d, h, mi, s, ns, oh, om = struct.unpack("<6hI2h", raw)
     return datetime(y, mo, d, h, mi, s, ns // 1000,
@@ -67,19 +67,20 @@ class MSSQLAdapter(Adapter):
     def __init__(self, endpoint):
         if pyodbc is None:  # pragma: no cover
             raise RuntimeError(
-                "Для mssql установите pyodbc и системный ODBC-драйвер "
-                "(msodbcsql18), либо используйте другой тип источника."
+                "mssql support requires pyodbc and a system ODBC driver "
+                "(msodbcsql18), or use a different source type."
             )
         super().__init__(endpoint)
         o = endpoint.options
         dsn = o.get("dsn")
-        if not dsn:  # pragma: no cover — сборка строки покрыта юнит-логикой ниже
+        if not dsn:  # pragma: no cover — string assembly is covered by the unit logic below
             dsn = self._build_dsn(o)
-        # autocommit=True: верификатор только читает, транзакции ему не
-        # нужны, а autocommit=False на SQL Server открывает неявную
-        # транзакцию, которая держит shared-блокировки на всё время стрима
-        # и (по наблюдениям CI) даёт аномалии видимости объектов на свежих
-        # сессиях. Переопределяется опцией autocommit: false.
+        # autocommit=True: the verifier only reads and does not need
+        # transactions, while autocommit=False on SQL Server opens an
+        # implicit transaction that holds shared locks for the whole
+        # duration of the stream and (per CI observations) causes object
+        # visibility anomalies on fresh sessions. Overridable with the
+        # option autocommit: false.
         self.conn = pyodbc.connect(dsn, autocommit=bool(o.get("autocommit", True)))
         self.conn.add_output_converter(_SQL_SS_TIMESTAMPOFFSET,
                                        _decode_datetimeoffset)
@@ -87,11 +88,11 @@ class MSSQLAdapter(Adapter):
 
     @staticmethod
     def _build_dsn(o: dict) -> str:
-        """ODBC-строка из частей host/port/database/user/password.
+        """An ODBC string from the host/port/database/user/password parts.
 
-        По умолчанию Driver 18 требует проверяемый сертификат сервера —
-        для типового verify-прогона включаем TrustServerCertificate=yes
-        (шифрование остаётся, проверка CA отключается).
+        By default Driver 18 requires a verifiable server certificate —
+        for a typical verify run we enable TrustServerCertificate=yes
+        (encryption stays, CA verification is disabled).
         """
         driver = o.get("driver", _DEFAULT_DRIVER)
         parts = [
@@ -115,7 +116,7 @@ class MSSQLAdapter(Adapter):
     def _tbl(self, table: str) -> str:
         return f"{self._q(self.schema)}.{self._q(table)}"
 
-    def list_tables(self) -> List[str]:  # pragma: no cover — нет сервера в CI юнитов
+    def list_tables(self) -> List[str]:  # pragma: no cover — no server in unit CI
         cur = self.conn.cursor()
         cur.execute(
             "SELECT table_name FROM information_schema.tables "
@@ -158,13 +159,13 @@ class MSSQLAdapter(Adapter):
         where, params = "", ()
         if pk_range is not None:
             col, lo, hi = pk_range
-            if hi is None:      # открытый диапазон — для resume с watermark
+            if hi is None:      # open range — for resume with a watermark
                 where = f" WHERE {q(col)} >= ?"
                 params = (lo,)
             else:
                 where = f" WHERE {q(col)} >= ? AND {q(col)} <= ?"
                 params = (lo, hi)
-        # текстовые order_by-колонки — бинарная коллация вместо коллации БД
+        # text order_by columns — binary collation instead of the DB collation
         logs = order_logicals or [None] * len(order_by)
         order_sql = ", ".join(
             f"{q(c)} COLLATE Latin1_General_BIN2" if lg == "text" else q(c)
@@ -184,38 +185,41 @@ class MSSQLAdapter(Adapter):
             for row in rows:
                 yield tuple(row)
 
-    # ---- digest-API (обкатывается live-тестом tests/test_mssql_integration.py)
+    # ---- digest API (exercised by the live test tests/test_mssql_integration.py)
 
     supports_digest = True
 
     @staticmethod
     def _md5(expr: str) -> str:
-        """md5-hex в нижнем регистре: CONVERT стиль 2 — hex без префикса 0x."""
+        """Lowercase md5 hex: CONVERT style 2 — hex without the 0x prefix."""
         return f"LOWER(CONVERT(VARCHAR(32), HASHBYTES('MD5', {expr}), 2))"
 
     def _canon(self, col: str, logical: str, rtrim: bool) -> str:
-        """Каноническое строковое представление колонки (T-SQL выражение).
+        """The column's canonical string representation (a T-SQL expression).
 
-        Контракт (см. base.py): инъективность по колонке обязательна;
-        расхождение канонизаций между движками лишь уводит сегмент в
-        row-режим (медленнее, но корректно — см. docstring core/segment.py).
+        Contract (see base.py): per-column injectivity is mandatory;
+        a canonicalization divergence between engines merely sends the
+        segment into row mode (slower, but correct — see the
+        core/segment.py docstring).
         """
         q = self._q(col)
         if logical == "number":
-            # Приводим к виду trim_scale (PG) / sqlite: 100.00 → '100',
-            # 1.50 → '1.5', 0.5 → '0.5'. TRIM(TRAILING ...) в T-SQL нет,
-            # поэтому: CAST к DECIMAL(38,10) даёт строку с ровно 10 знаками
-            # дроби (точка есть всегда), затем срезаем хвостовые нули.
-            # PATINDEX('%[^0]%', REVERSE(v)) — позиция первого «не-нуля»
-            # с конца; значение 11 означает «вся дробь нулевая» (11-й
-            # символ с конца — сама точка) — тогда срезаем 11 символов
-            # ('.0000000000'), иначе только нули (PATINDEX - 1).
+            # Reduce to the trim_scale (PG) / sqlite form: 100.00 → '100',
+            # 1.50 → '1.5', 0.5 → '0.5'. T-SQL has no TRIM(TRAILING ...),
+            # so: CAST to DECIMAL(38,10) yields a string with exactly 10
+            # fractional digits (the dot is always present), then we cut
+            # the trailing zeros.
+            # PATINDEX('%[^0]%', REVERSE(v)) — the position of the first
+            # "non-zero" from the end; a value of 11 means "the whole
+            # fraction is zero" (the 11th character from the end is the
+            # dot itself) — then we cut 11 characters ('.0000000000'),
+            # otherwise only the zeros (PATINDEX - 1).
             #
-            # Компромиссы (не дают ложных совпадений МЕЖДУ движками):
-            # scale > 10 округляется CAST'ом — такие колонки при сверке
-            # MSSQL↔MSSQL доверяйте strategy=stream; больше 28 целых
-            # разрядов — арифметическое переполнение (явная ошибка
-            # запроса, не тихий пропуск).
+            # Trade-offs (they do not produce false matches BETWEEN engines):
+            # scale > 10 is rounded by the CAST — for such columns in an
+            # MSSQL↔MSSQL comparison trust strategy=stream; more than 28
+            # integer digits — an arithmetic overflow (an explicit query
+            # error, not a silent skip).
             v = f"CONVERT(VARCHAR(50), CAST({q} AS DECIMAL(38, 10)))"
             trimmed = (
                 f"LEFT({v}, LEN({v}) - CASE "
@@ -227,11 +231,12 @@ class MSSQLAdapter(Adapter):
             return (f"CASE WHEN {q} IS NULL THEN 'N' "
                     f"WHEN {q} = 1 THEN '1' ELSE '0' END")
         v = f"RTRIM({q})" if rtrim else q
-        # CAST в VARCHAR(MAX): для ASCII байты совпадают с UTF-8, то есть
-        # md5 равен md5()/md5hex() других движков и бакеты совпадают.
-        # Не-ASCII в NVARCHAR может выродиться в '?' (кодовая страница БД) —
-        # digest разойдётся с источником и сегмент уйдёт в row-режим с
-        # честным клиентским сравнением: медленнее, но корректно.
+        # CAST to VARCHAR(MAX): for ASCII the bytes match UTF-8, i.e. the
+        # md5 equals md5()/md5hex() of the other engines and the buckets
+        # match. Non-ASCII in NVARCHAR may degenerate into '?' (the DB code
+        # page) — the digest diverges from the source and the segment goes
+        # into row mode with an honest client-side comparison: slower, but
+        # correct.
         return (f"CASE WHEN {q} IS NULL THEN 'N' "
                 f"ELSE {self._md5(f'CAST({v} AS VARCHAR(MAX))')} END")
 
@@ -252,22 +257,22 @@ class MSSQLAdapter(Adapter):
 
     def bucket_digests(self, table: str, columns, logicals, pk_col: str,
                        lo, step: int, hi, rtrim: bool = False) -> dict:  # pragma: no cover
-        # Конкатенация в T-SQL — оператор +; canon-ветки NULL не возвращают
-        # ('N'), поэтому вся строка никогда не NULL.
+        # Concatenation in T-SQL is the + operator; the canon branches never
+        # return NULL ('N'), so the whole string is never NULL.
         parts = " + '|' + ".join(
             self._canon(c, lg, rtrim) for c, lg in zip(columns, logicals))
         q = self._q(pk_col)
 
         def word(pos: int) -> str:
-            # 8 hex-символов → VARBINARY(4) (стиль 1 понимает префикс 0x)
-            # → BIGINT: беззнаковое 32-битное слово, как ('x'||h)::bit(32)
-            # в PG и hex2int в sqlite.
+            # 8 hex characters → VARBINARY(4) (style 1 understands the 0x
+            # prefix) → BIGINT: an unsigned 32-bit word, like
+            # ('x'||h)::bit(32) in PG and hex2int in sqlite.
             return ("CONVERT(BIGINT, CONVERT(VARBINARY(4), "
                     f"'0x' + SUBSTRING(h, {pos}, 8), 1))")
 
-        # (pk - lo) >= 0 из-за WHERE, поэтому целочисленное деление T-SQL
-        # (усечение к нулю) эквивалентно FLOOR; FLOOR оставлен для
-        # decimal-PK, где деление даёт дробь.
+        # (pk - lo) >= 0 due to the WHERE, so T-SQL integer division
+        # (truncation toward zero) is equivalent to FLOOR; FLOOR is kept
+        # for decimal PKs, where the division yields a fraction.
         sql_text = (
             f"SELECT b, COUNT(*), "
             f"COALESCE(SUM({word(1)}), 0), "

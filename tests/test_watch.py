@@ -1,4 +1,4 @@
-"""Режим наблюдения (`dbparity watch`): до устойчиво нулевого дрейфа."""
+"""Watch mode (`dbparity watch`): run until drift is stably zero."""
 import sqlite3
 
 from dbparity import cli
@@ -35,7 +35,7 @@ def test_watch_requires_incremental(tmp_path, monkeypatch):
 
 
 def test_watch_green_when_no_drift(tmp_path, monkeypatch):
-    """Идентичные базы: два нулевых прогона подряд → код 0."""
+    """Identical databases: two zero-drift runs in a row -> exit code 0."""
     monkeypatch.chdir(tmp_path)
     cfg_yaml = _make_pair(tmp_path)
     sleeps = []
@@ -43,18 +43,18 @@ def test_watch_green_when_no_drift(tmp_path, monkeypatch):
     rc = cli.main(["watch", "-c", str(cfg_yaml),
                    "--interval", "0", "--stable", "2", "--max-runs", "10"])
     assert rc == 0
-    assert len(sleeps) == 1          # ровно одна пауза между двумя прогонами
+    assert len(sleeps) == 1          # exactly one pause between the two runs
 
 
 def test_watch_red_on_persistent_drift(tmp_path, monkeypatch):
-    """Дрейф только в источнике не рассасывается → лимит прогонов, код 1."""
+    """Source-only drift never settles -> the run limit hits, exit code 1."""
     monkeypatch.chdir(tmp_path)
     cfg_yaml = _make_pair(tmp_path)
 
     calls = {"n": 0}
 
     def sleep_and_drift(_s):
-        # после первого прогона вносим дрейф: строка обновлена ТОЛЬКО в src
+        # after the first run, inject drift: a row updated ONLY in src
         calls["n"] += 1
         if calls["n"] == 1:
             conn = sqlite3.connect(tmp_path / "s.db")
@@ -66,4 +66,4 @@ def test_watch_red_on_persistent_drift(tmp_path, monkeypatch):
     rc = cli.main(["watch", "-c", str(cfg_yaml),
                    "--interval", "0", "--stable", "3", "--max-runs", "4"])
     assert rc == 1
-    assert calls["n"] == 3           # паузы между четырьмя прогонами
+    assert calls["n"] == 3           # pauses between the four runs

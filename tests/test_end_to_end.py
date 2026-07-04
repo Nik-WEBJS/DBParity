@@ -1,4 +1,4 @@
-"""Интеграционные тесты: демо-прогон end-to-end против EXPECTED."""
+"""Integration tests: end-to-end demo run against EXPECTED."""
 import json
 import sqlite3
 
@@ -36,9 +36,9 @@ def test_demo_run_matches_expected(tmp_path):
 def test_html_report(tmp_path):
     run = engine.run(build_demo(tmp_path))
     html = render_html(run)
-    assert "НЕ ЭКВИВАЛЕНТНО" in html
-    assert "tabler" in html            # UI-кит подключён
-    assert "chart.umd" in html         # графики подключены
+    assert "NOT EQUIVALENT" in html
+    assert "tabler" in html            # UI kit is included
+    assert "chart.umd" in html         # charts are included
     assert "customers" in html
 
 
@@ -53,20 +53,20 @@ def test_json_report(tmp_path):
 
 
 def test_traps_do_not_false_positive(tmp_path):
-    """Ловушки (таймзона, паддинг, ''/NULL) не должны давать ложных расхождений."""
+    """Traps (timezone, padding, ''/NULL) must not produce false diffs."""
     run = engine.run(build_demo(tmp_path))
     by = {t.table: t for t in run.tables}
     flagged = set()
     for s in by["customers"].samples:
         flagged.add(s.pk[0])
-    # id 60 (таймзона) и id 70 (паддинг) не должны попасть в расхождения
+    # id 60 (timezone) and id 70 (padding) must not end up flagged
     assert "60" not in flagged and "70" not in flagged
-    # а настоящие расхождения — должны
+    # while the real diffs must be
     assert {"10", "20", "30", "40"} <= flagged
 
 
 def test_parallel_workers_match_sequential(tmp_path):
-    """workers=3 даёт побитово те же результаты, что последовательный прогон."""
+    """workers=3 yields bit-for-bit the same results as a sequential run."""
     import dataclasses
     cfg = build_demo(tmp_path)
     seq = engine.run(cfg)
@@ -80,7 +80,7 @@ def test_parallel_workers_match_sequential(tmp_path):
 
 
 def test_progress_callback(tmp_path):
-    """Колбэк прогресса получает финальные счётчики строк по таблицам."""
+    """The progress callback receives final per-table row counters."""
     cfg = build_demo(tmp_path)
     seen = {}
     engine.run(cfg, on_progress=lambda t, n: seen.__setitem__(t, n))
@@ -89,7 +89,7 @@ def test_progress_callback(tmp_path):
 
 
 def test_text_pk_warning(tmp_path):
-    """Текстовый PK → предупреждение о коллациях, но не ошибка."""
+    """Text PK -> a collation warning, but not an error."""
     for name in ("s.db", "d.db"):
         c = sqlite3.connect(tmp_path / name)
         c.execute("CREATE TABLE t (code TEXT PRIMARY KEY, v TEXT)")
@@ -102,16 +102,16 @@ def test_text_pk_warning(tmp_path):
     )
     run = engine.run(cfg)
     t = run.tables[0]
-    assert t.warnings and "коллаци" in t.warnings[0]
-    assert t.ok                      # предупреждение ≠ расхождение
+    assert t.warnings and "collation" in t.warnings[0]
+    assert t.ok                      # a warning is not a diff
     assert run.equivalent
     html = render_html(run)
-    assert "коллаци" in html         # предупреждение видно в отчёте
+    assert "collation" in html         # the warning is visible in the report
 
 
 def test_cli_demo_exit_code(tmp_path):
     rc = cli.main(["demo", "--outdir", str(tmp_path / "out")])
-    assert rc == 1   # расхождения найдены — ненулевой код выхода
+    assert rc == 1   # diffs found - non-zero exit code
     assert (tmp_path / "out" / "dbparity_report.html").exists()
     assert (tmp_path / "out" / "dbparity_report.json").exists()
     assert (tmp_path / "out" / "demo_config.yaml").exists()

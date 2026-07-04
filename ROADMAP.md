@@ -1,77 +1,77 @@
-# Роадмап до v1.0
+# Roadmap to v1.0
 
-Философия: dbparity — инструмент *доказательства*, поэтому приоритет всегда
-корректность → масштаб → удобство. Ложное «ЭКВИВАЛЕНТНО» — худший баг проекта.
+Philosophy: dbparity is a tool of *proof*, so the priority is always
+correctness → scale → convenience. A false "EQUIVALENT" is the worst bug this project can have.
 
 ## v0.2 — Correctness & Scale basics
 
-- [x] Oracle: NUMBER → Decimal (а не float!) и LOB → значения — без этого
-  верификатор сам терял бы точность
-- [x] NULL в PK: отдельная категория `null_pk` вместо недетерминированного merge
-- [x] Текстовые PK: предупреждение о различиях сортировки/коллаций между движками
-- [x] Параллельная сверка таблиц (`workers: N`, соединение на поток)
-- [x] Живой прогресс в CLI
-- [x] Workflow публикации на PyPI (по тегу `v*`)
+- [x] Oracle: NUMBER → Decimal (not float!) and LOB → values — without this
+  the verifier itself would be losing precision
+- [x] NULL in PK: a dedicated `null_pk` category instead of a non-deterministic merge
+- [x] Text PKs: a warning about sort-order/collation differences between engines
+- [x] Parallel table comparison (`workers: N`, one connection per thread)
+- [x] Live progress in the CLI
+- [x] PyPI publishing workflow (on `v*` tags)
 
-## v0.3 — Big tables (100M+ строк)
+## v0.3 — Big tables (100M+ rows)
 
-- [x] Бакетные DB-side хэши за один скан (GROUP BY по PK-диапазонам),
-  потоковая детализация только расходящихся бакетов; `strategy: auto|stream|hash`.
-  Типы вне hash-набора (float/datetime/bytes) → авто-fallback в stream.
-  Несовершенная канонизация деградирует скорость, но не корректность
-- [x] Checkpoint/resume: атомарный JSON-стейт (fingerprint конфига,
-  watermark по PK, партиал-слот на таблицу), `--resume` в CLI
-- [x] Retry на сетевые ошибки: `retry_attempts`/`retry_backoff_s`,
-  свежая пара соединений на попытку, продолжение с последнего watermark
-- [x] Бенчмарк-матрица в CI: `bench --json` + workflow с порогами регрессии
-  и публикацией метрик в summary
+- [x] Bucketed DB-side hashes in a single scan (GROUP BY over PK ranges),
+  streaming drill-down of the diverged buckets only; `strategy: auto|stream|hash`.
+  Types outside the hash-safe set (float/datetime/bytes) → automatic fallback to stream.
+  Imperfect canonicalization degrades speed, never correctness
+- [x] Checkpoint/resume: atomic JSON state (config fingerprint,
+  PK watermark, a partial slot per table), `--resume` in the CLI
+- [x] Retry on network errors: `retry_attempts`/`retry_backoff_s`,
+  a fresh pair of connections per attempt, resumption from the last watermark
+- [x] Benchmark matrix in CI: `bench --json` + a workflow with regression
+  thresholds and metrics published to the summary
 
 ## v0.4 — Oracle/MSSQL hardening
 
-- [ ] Обкатка на реальных Oracle-инстансах (issues от сообщества)
-- [ ] Кодировки: AL32UTF8 vs UTF-8 edge cases, NCHAR/NVARCHAR2
-- [x] MSSQL: полноценный адаптер (ODBC 18, datetimeoffset-конвертер,
-  digest-API с T-SQL канонизацией) + live-джоба в CI (mcr mssql-server:2022)
-- [x] Бинарная сортировка для текстовых PK: `COLLATE "C"` (PG) /
+- [ ] Battle-testing on real Oracle instances (community issues)
+- [ ] Encodings: AL32UTF8 vs UTF-8 edge cases, NCHAR/NVARCHAR2
+- [x] MSSQL: a full adapter (ODBC 18, datetimeoffset converter,
+  digest API with T-SQL canonicalization) + a live CI job (mcr mssql-server:2022)
+- [x] Binary sort order for text PKs: `COLLATE "C"` (PG) /
   `NLSSORT BINARY` (Oracle) / `COLLATE BINARY` (sqlite) /
-  `Latin1_General_BIN2` (MSSQL) — предупреждение заменено гарантией
+  `Latin1_General_BIN2` (MSSQL) — the warning replaced by a guarantee
 
 ## v0.5 — Parallel-run mode
 
-- [x] Инкрементальные прогоны по watermark-колонке (`incremental:` в конфиге,
-  `--full` для сброса): сверяются только изменённые строки, missing/extra
-  среди них = дрейф dual-write; стейт с fingerprint конфига
-- [x] Отчёт-таймлайн серии инкрементальных прогонов: журнал в стейте,
-  `dbparity history` (rich-таблица + HTML с line-chart дрейфа «до нуля»)
-- [x] Режим наблюдения `dbparity watch`: циклические инкрементальные
-  прогоны с паузой до устойчиво нулевого дрейфа (--stable N подряд),
-  зелёный сигнал «можно переключать трафик», коды выхода для оркестрации
+- [x] Incremental runs over a watermark column (`incremental:` in the config,
+  `--full` to reset): only changed rows are compared; missing/extra
+  among them = dual-write drift; state carries the config fingerprint
+- [x] Timeline report for a series of incremental runs: a journal in the state
+  file, `dbparity history` (rich table + HTML with a drift-to-zero line chart)
+- [x] Watch mode `dbparity watch`: cyclic incremental runs with a pause,
+  until drift stays at zero (--stable N in a row),
+  a green "safe to switch traffic" signal, exit codes for orchestration
 
 ## v0.9 — Release candidate
 
-- [x] Стабилизация формата JSON-отчёта: schema_version=1, правила эволюции,
-  справочники docs/report-format.md и docs/config-reference.md,
-  золотой тест формата
-- [x] Стабилизация формата config.yaml: замороженные наборы ключей
-  (верхний уровень + rules) под золотым тестом, те же правила эволюции
-- [x] `dbparity validate` — проверка конфига без подключения к БД,
-  агрегированные ошибки с подсказками опечаток (сделано досрочно)
-- [x] Веб-консоль `dbparity serve`: локальный UI (stdlib-only) — запуск
-  сверок из браузера, live-прогресс, раздача отчётов
-- [ ] Документация: сайт (mkdocs), рецепты для типовых миграций
-  (Oracle→PG, MSSQL→PG, включая СНГ-специфику Postgres Pro)
+- [x] JSON report format stabilization: schema_version=1, evolution rules,
+  the docs/report-format.md and docs/config-reference.md references,
+  a golden test of the format
+- [x] config.yaml format stabilization: frozen key sets
+  (top level + rules) under a golden test, same evolution rules
+- [x] `dbparity validate` — config checking without connecting to databases,
+  aggregated errors with typo hints (done ahead of schedule)
+- [x] Web console `dbparity serve`: a local UI (stdlib-only) — launch
+  comparison runs from the browser, live progress, report serving
+- [ ] Documentation: a site (mkdocs), recipes for typical migrations
+  (Oracle→PG, MSSQL→PG, including the CIS-specific Postgres Pro)
 
-## Критерии v1.0
+## v1.0 criteria
 
-1. ≥5 реальных миграций проверено сообществом/автором, из них ≥1 с таблицей 100M+
-2. Ноль известных классов ложных «ЭКВИВАЛЕНТНО»
-3. Oracle и MSSQL адаптеры покрыты интеграционными тестами в CI
-4. Форматы config/отчётов заморожены (breaking changes → v2)
-5. Публикация на PyPI, установка `pip install dbparity`
+1. ≥5 real migrations verified by the community/author, at least 1 of them with a 100M+ row table
+2. Zero known classes of false "EQUIVALENT"
+3. Oracle and MSSQL adapters covered by integration tests in CI
+4. Config/report formats frozen (breaking changes → v2)
+5. Published on PyPI, installable with `pip install dbparity`
 
-## Как релизить
+## How to release
 
-Тег `vX.Y.Z` на main → CI собирает и публикует на PyPI
-(требуется одноразовая настройка Trusted Publisher на pypi.org:
-проект dbparity → Publishing → GitHub → repo `Nik-WEBJS/DBParity`,
+Tag `vX.Y.Z` on main → CI builds and publishes to PyPI
+(requires a one-time Trusted Publisher setup on pypi.org:
+project dbparity → Publishing → GitHub → repo `Nik-WEBJS/DBParity`,
 workflow `release.yml`, environment `pypi`).

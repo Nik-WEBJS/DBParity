@@ -1,12 +1,12 @@
-"""Золотой тест формата config.yaml (v0.9: semver-гарантии).
+"""Golden test for the config.yaml format (v0.9: semver guarantees).
 
-Правила эволюции — как у JSON-отчёта (docs/report-format.md):
-- ДОБАВЛЕНИЕ нового ключа — минорное изменение: дополни ЗАМОРОЖЕННЫЕ
-  наборы ниже и docs/config-reference.md;
-- ПЕРЕИМЕНОВАНИЕ/УДАЛЕНИЕ ключа или смена типа/семантики — мажорное:
-  разрешено только с мажорной версией и записью в CHANGELOG.
-Падение этого теста без осознанного изменения наборов = случайная
-поломка обратной совместимости пользовательских конфигов.
+Evolution rules match the JSON report (docs/report-format.md):
+- ADDING a new key is a minor change: extend the FROZEN sets below
+  and docs/config-reference.md;
+- RENAMING/REMOVING a key or changing its type/semantics is major:
+  allowed only with a major version bump and a CHANGELOG entry.
+If this test fails without a deliberate change to the sets, backward
+compatibility of user configs has been broken by accident.
 """
 import dataclasses
 
@@ -29,21 +29,21 @@ FROZEN_RULES = {
 
 def test_top_level_keys_frozen():
     assert _TOP_LEVEL_KEYS == FROZEN_TOP_LEVEL, (
-        "Набор ключей config.yaml изменился: если это осознанное ДОБАВЛЕНИЕ — "
-        "дополните FROZEN_TOP_LEVEL и docs/config-reference.md; удаление/"
-        "переименование допустимо только мажорной версией")
+        "The config.yaml key set changed: if this is a deliberate ADDITION, "
+        "extend FROZEN_TOP_LEVEL and docs/config-reference.md; removal/"
+        "renaming is allowed only with a major version bump")
 
 
 def test_rules_keys_frozen():
     actual = {f.name for f in dataclasses.fields(NormalizeRules)}
     assert actual == FROZEN_RULES, (
-        "Набор правил нормализации изменился: добавление — дополните "
-        "FROZEN_RULES и docs/config-reference.md; удаление/переименование — "
-        "только мажорной версией")
+        "The normalization rule set changed: for an addition, extend "
+        "FROZEN_RULES and docs/config-reference.md; removal/renaming - "
+        "only with a major version bump")
 
 
 def test_full_config_still_parses():
-    """Конфиг, использующий каждый замороженный ключ, собирается без ошибок."""
+    """A config exercising every frozen key builds without errors."""
     cfg = config_from_dict({
         "source": {"type": "sqlite", "label": "S", "path": "/tmp/s.db"},
         "target": {"type": "postgres", "label": "T",

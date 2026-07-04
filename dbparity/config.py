@@ -1,4 +1,4 @@
-"""Загрузка и валидация YAML-конфига сверки."""
+"""Loading and validation of the comparison YAML config."""
 from __future__ import annotations
 
 import dataclasses
@@ -40,15 +40,15 @@ class Config:
     mask_values: bool = False
     workers: int = 1
     strategy: str = "auto"              # auto | stream | hash
-    hash_leaf_rows: int = 20000         # шаг бакета по PK (≈ строк в сегменте
-                                        # при плотном ключе)
-    checkpoint: Optional[str] = None    # путь к файлу чекпоинта (вкл. resume)
+    hash_leaf_rows: int = 20000         # PK bucket step (≈ rows per segment
+                                        # for a dense key)
+    checkpoint: Optional[str] = None    # checkpoint file path (enables resume)
     checkpoint_every_rows: int = 500000
-    # Инкрементальный режим: {таблица: watermark-колонка}. Колонка существует
-    # в обеих БД и монотонно растёт при изменении строки (timestamp/версия);
-    # следующий прогон перепроверяет только строки с wm_col >= watermark.
+    # Incremental mode: {table: watermark column}. The column exists in both
+    # databases and grows monotonically when a row changes (timestamp/version);
+    # the next run re-checks only rows with wm_col >= watermark.
     incremental: dict = field(default_factory=dict)
-    retry_attempts: int = 1             # 1 = без ретраев
+    retry_attempts: int = 1             # 1 = no retries
     retry_backoff_s: float = 2.0
     report: ReportConfig = field(default_factory=ReportConfig)
 
@@ -77,7 +77,7 @@ class Config:
 
 def _endpoint(data: dict, key: str) -> EndpointConfig:
     if not isinstance(data, dict) or "type" not in data:
-        raise ValueError(f"Секция '{key}' должна содержать поле type "
+        raise ValueError(f"Section '{key}' must contain a type field "
                          f"(sqlite | postgres | oracle | mssql)")
     options = {k: v for k, v in data.items() if k not in ("type", "label")}
     return EndpointConfig(type=str(data["type"]), label=data.get("label"),
@@ -89,8 +89,8 @@ def _rules(data: dict) -> NormalizeRules:
     unknown = set(data) - allowed
     if unknown:
         raise ValueError(
-            f"Неизвестные правила нормализации: {sorted(unknown)}. "
-            f"Допустимые: {sorted(allowed)}"
+            f"Unknown normalization rules: {sorted(unknown)}. "
+            f"Allowed: {sorted(allowed)}"
         )
     return NormalizeRules(**data)
 
@@ -98,18 +98,19 @@ def _rules(data: dict) -> NormalizeRules:
 def _strategy(value) -> str:
     v = str(value).lower()
     if v not in ("auto", "stream", "hash"):
-        raise ValueError(f"strategy: ожидается auto|stream|hash, получено {value!r}")
+        raise ValueError(f"strategy: expected auto|stream|hash, got {value!r}")
     return v
 
 
 # ---------------------------------------------------------------------------
-# Валидация «сырого» словаря конфига (до построения Config, без подключения
-# к БД). Используется командой `dbparity validate` и самим config_from_dict.
+# Validation of the "raw" config dict (before building Config, without
+# connecting to the databases). Used by the `dbparity validate` command and
+# by config_from_dict itself.
 # ---------------------------------------------------------------------------
 
 _ENDPOINT_TYPES = ("sqlite", "postgres", "postgresql", "oracle", "mssql")
 
-# Все известные ключи верхнего уровня (по полям Config)
+# All known top-level keys (per Config fields)
 _TOP_LEVEL_KEYS = {
     "source", "target", "tables", "pk_overrides", "exclude_columns", "rules",
     "sample_limit", "batch_size", "mask_values", "workers", "strategy",
@@ -117,7 +118,7 @@ _TOP_LEVEL_KEYS = {
     "retry_attempts", "retry_backoff_s", "report", "incremental",
 }
 
-# Минимумы целочисленных параметров (согласованы с config_from_dict)
+# Minimums for integer parameters (kept in sync with config_from_dict)
 _INT_MINIMUMS = {
     "workers": 1,
     "sample_limit": 0,
@@ -129,34 +130,34 @@ _INT_MINIMUMS = {
 
 
 def _is_int(value) -> bool:
-    """Целое число (bool в Python — тоже int, поэтому исключаем явно)."""
+    """An integer (bool is an int in Python too, so exclude it explicitly)."""
     return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _is_number(value) -> bool:
-    """Число (int или float), но не bool."""
+    """A number (int or float), but not bool."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _validate_endpoint(section: str, data, problems: list[str]) -> None:
-    """Проверка секции source/target: type и обязательные параметры по типу."""
+    """Check the source/target section: type and required options per type."""
     if not isinstance(data, dict):
-        problems.append(f"{section}: секция должна быть словарём "
-                        f"с полем type и параметрами подключения")
+        problems.append(f"{section}: the section must be a mapping "
+                        f"with a type field and connection options")
         return
     raw_type = data.get("type")
     if raw_type is None:
-        problems.append(f"{section}.type: обязательное поле "
+        problems.append(f"{section}.type: required field "
                         f"({' | '.join(_ENDPOINT_TYPES)})")
         return
     etype = str(raw_type).lower()
     if etype not in _ENDPOINT_TYPES:
-        problems.append(f"{section}.type: неизвестный тип {raw_type!r} "
-                        f"(допустимые: {', '.join(_ENDPOINT_TYPES)})")
+        problems.append(f"{section}.type: unknown type {raw_type!r} "
+                        f"(allowed: {', '.join(_ENDPOINT_TYPES)})")
         return
     if etype == "sqlite":
         if not data.get("path"):
-            problems.append(f"{section}.path: обязателен для type=sqlite")
+            problems.append(f"{section}.path: required for type=sqlite")
     elif etype in ("postgres", "postgresql"):
         if not data.get("dsn"):
             missing = [k for k in ("host", "dbname", "user")
@@ -164,166 +165,167 @@ def _validate_endpoint(section: str, data, problems: list[str]) -> None:
                        and not (k == "dbname" and data.get("database"))]
             if missing:
                 problems.append(
-                    f"{section}: для type={etype} укажите dsn либо "
-                    f"host+dbname+user (не хватает: {', '.join(missing)})")
+                    f"{section}: for type={etype} provide dsn or "
+                    f"host+dbname+user (missing: {', '.join(missing)})")
     elif etype == "oracle":
         for key in ("user", "password", "dsn"):
             if not data.get(key):
-                problems.append(f"{section}.{key}: обязателен для type=oracle")
+                problems.append(f"{section}.{key}: required for type=oracle")
     elif etype == "mssql":
         if not data.get("dsn"):
-            problems.append(f"{section}.dsn: обязателен для type=mssql")
+            problems.append(f"{section}.dsn: required for type=mssql")
 
 
 def _validate_rules_dict(data, problems: list[str]) -> None:
-    """Проверка секции rules: известные ключи и типы значений."""
+    """Check the rules section: known keys and value types."""
     if data is None:
         return
     if not isinstance(data, dict):
-        problems.append("rules: ожидается словарь правил нормализации")
+        problems.append("rules: expected a mapping of normalization rules")
         return
     defaults = NormalizeRules()
     allowed = sorted(f.name for f in dataclasses.fields(NormalizeRules))
     for key, value in data.items():
         if key not in allowed:
             hint = difflib.get_close_matches(str(key), allowed, n=1)
-            msg = f"rules.{key}: неизвестное правило (опечатка?)"
+            msg = f"rules.{key}: unknown rule (typo?)"
             if hint:
-                msg += f" — возможно, имелось в виду '{hint[0]}'"
+                msg += f" — did you mean '{hint[0]}'"
             else:
-                msg += f"; допустимые: {', '.join(allowed)}"
+                msg += f"; allowed: {', '.join(allowed)}"
             problems.append(msg)
             continue
         expected = getattr(defaults, key)
         if isinstance(expected, bool):
             if not isinstance(value, bool):
-                problems.append(f"rules.{key}: ожидается true/false, "
-                                f"получено {value!r}")
+                problems.append(f"rules.{key}: expected true/false, "
+                                f"got {value!r}")
         elif key == "timestamp_precision":
             if not _is_int(value) or not 0 <= value <= 6:
-                problems.append(f"rules.{key}: ожидается целое число 0..6, "
-                                f"получено {value!r}")
+                problems.append(f"rules.{key}: expected an integer 0..6, "
+                                f"got {value!r}")
         elif key == "float_epsilon":
             if not _is_number(value) or value < 0:
-                problems.append(f"rules.{key}: ожидается число ≥ 0, "
-                                f"получено {value!r}")
+                problems.append(f"rules.{key}: expected a number ≥ 0, "
+                                f"got {value!r}")
 
 
 def validate_config_dict(data: dict) -> list[str]:
-    """Проверяет словарь конфига ДО построения Config и без подключения к БД.
+    """Checks the config dict BEFORE building Config and without connecting
+    to the databases.
 
-    Возвращает список человекочитаемых проблем на русском языке
-    (пустой список — конфиг валиден). Каждая строка содержит путь к полю,
-    например: "source.path: обязателен для type=sqlite".
+    Returns a list of human-readable problems (an empty list means the config
+    is valid). Each line contains the field path, for example:
+    "source.path: required for type=sqlite".
     """
     if not isinstance(data, dict):
-        return ["Конфиг пуст или имеет неверный формат (ожидается YAML-словарь)"]
+        return ["Config is empty or malformed (a YAML mapping is expected)"]
 
     problems: list[str] = []
 
-    # --- обязательные секции source/target --------------------------------
+    # --- required source/target sections -----------------------------------
     for section in ("source", "target"):
         if section not in data:
-            problems.append(f"{section}: отсутствует обязательная секция "
-                            f"(описание подключения)")
+            problems.append(f"{section}: missing required section "
+                            f"(connection description)")
         else:
             _validate_endpoint(section, data[section], problems)
 
-    # --- правила нормализации ----------------------------------------------
+    # --- normalization rules ------------------------------------------------
     _validate_rules_dict(data.get("rules"), problems)
 
-    # --- стратегия -----------------------------------------------------------
+    # --- strategy -------------------------------------------------------------
     if "strategy" in data:
         v = data["strategy"]
         if not isinstance(v, str) or v.lower() not in ("auto", "stream", "hash"):
-            problems.append(f"strategy: ожидается auto | stream | hash, "
-                            f"получено {v!r}")
+            problems.append(f"strategy: expected auto|stream|hash, "
+                            f"got {v!r}")
 
-    # --- целочисленные параметры и их минимумы -------------------------------
+    # --- integer parameters and their minimums --------------------------------
     for key, minimum in _INT_MINIMUMS.items():
         if key in data:
             v = data[key]
             if not _is_int(v):
-                problems.append(f"{key}: ожидается целое число ≥ {minimum}, "
-                                f"получено {v!r}")
+                problems.append(f"{key}: expected an integer ≥ {minimum}, "
+                                f"got {v!r}")
             elif v < minimum:
-                problems.append(f"{key}: минимально допустимое значение "
-                                f"{minimum}, получено {v}")
+                problems.append(f"{key}: the minimum allowed value is "
+                                f"{minimum}, got {v}")
 
     if "retry_backoff_s" in data:
         v = data["retry_backoff_s"]
         if not _is_number(v) or v < 0:
-            problems.append(f"retry_backoff_s: ожидается число ≥ 0, "
-                            f"получено {v!r}")
+            problems.append(f"retry_backoff_s: expected a number ≥ 0, "
+                            f"got {v!r}")
 
     if "mask_values" in data and data["mask_values"] is not None \
             and not isinstance(data["mask_values"], bool):
-        problems.append(f"mask_values: ожидается true/false, "
-                        f"получено {data['mask_values']!r}")
+        problems.append(f"mask_values: expected true/false, "
+                        f"got {data['mask_values']!r}")
 
-    # --- список таблиц --------------------------------------------------------
+    # --- table list ------------------------------------------------------------
     if data.get("tables") is not None:
         tables = data["tables"]
         if not isinstance(tables, list):
-            problems.append("tables: ожидается список имён таблиц (строк)")
+            problems.append("tables: expected a list of table names (strings)")
         else:
             for i, item in enumerate(tables):
                 if not isinstance(item, str):
-                    problems.append(f"tables[{i}]: ожидается строка, "
-                                    f"получено {item!r}")
+                    problems.append(f"tables[{i}]: expected a string, "
+                                    f"got {item!r}")
 
-    # --- переопределения PK и исключённые колонки ------------------------------
+    # --- PK overrides and excluded columns --------------------------------------
     for key in ("pk_overrides", "exclude_columns"):
         if data.get(key) is None:
             continue
         mapping = data[key]
         if not isinstance(mapping, dict):
-            problems.append(f"{key}: ожидается словарь "
-                            f"{{таблица: [список колонок]}}")
+            problems.append(f"{key}: expected a mapping "
+                            f"{{table: [list of columns]}}")
             continue
         for table, cols in mapping.items():
             if not isinstance(cols, list) \
                     or not all(isinstance(c, str) for c in cols):
-                problems.append(f"{key}.{table}: ожидается список "
-                                f"имён колонок (строк)")
+                problems.append(f"{key}.{table}: expected a list "
+                                f"of column names (strings)")
 
-    # --- инкрементальный режим (watermark-колонки) ------------------------------
+    # --- incremental mode (watermark columns) ------------------------------------
     if data.get("incremental") is not None:
         mapping = data["incremental"]
         if not isinstance(mapping, dict):
-            problems.append("incremental: ожидается словарь "
-                            "{таблица: watermark-колонка}")
+            problems.append("incremental: expected a mapping "
+                            "{table: watermark column}")
         else:
             for table, col in mapping.items():
                 if not isinstance(col, str) or not col.strip():
-                    problems.append(f"incremental.{table}: ожидается имя "
-                                    f"watermark-колонки (строка)")
+                    problems.append(f"incremental.{table}: expected a "
+                                    f"watermark column name (string)")
 
-    # --- отчёты и чекпоинт -----------------------------------------------------
+    # --- reports and checkpoint --------------------------------------------------
     report = data.get("report")
     if report is not None:
         if not isinstance(report, dict):
-            problems.append("report: ожидается словарь "
-                            "с ключами html и/или json")
+            problems.append("report: expected a mapping "
+                            "with html and/or json keys")
         else:
             for key in ("html", "json"):
                 if report.get(key) is not None \
                         and not isinstance(report[key], str):
-                    problems.append(f"report.{key}: ожидается строка "
-                                    f"(путь к файлу)")
+                    problems.append(f"report.{key}: expected a string "
+                                    f"(file path)")
 
     if data.get("checkpoint") is not None \
             and not isinstance(data["checkpoint"], str):
-        problems.append("checkpoint: ожидается строка (путь к файлу)")
+        problems.append("checkpoint: expected a string (file path)")
 
-    # --- незнакомые ключи верхнего уровня (с подсказкой) -------------------------
+    # --- unknown top-level keys (with a hint) -------------------------------------
     for key in data:
         if key not in _TOP_LEVEL_KEYS:
             hint = difflib.get_close_matches(str(key),
                                              sorted(_TOP_LEVEL_KEYS), n=1)
-            msg = f"{key}: неизвестный ключ (опечатка?)"
+            msg = f"{key}: unknown key (typo?)"
             if hint:
-                msg += f" — возможно, имелся в виду '{hint[0]}'"
+                msg += f" — did you mean '{hint[0]}'"
             problems.append(msg)
 
     return problems
@@ -333,7 +335,7 @@ def config_from_dict(data: dict) -> Config:
     problems = validate_config_dict(data)
     if problems:
         raise ValueError(
-            f"Конфиг не прошёл проверку (проблем: {len(problems)}):\n"
+            f"Config failed validation ({len(problems)} problem(s)):\n"
             + "\n".join(f"  - {p}" for p in problems)
         )
     report = data.get("report") or {}
@@ -366,6 +368,6 @@ def config_from_dict(data: dict) -> Config:
 def load_config(path: str | Path) -> Config:
     p = Path(path)
     if not p.exists():
-        raise FileNotFoundError(f"Конфиг не найден: {p}")
+        raise FileNotFoundError(f"Config not found: {p}")
     with open(p, encoding="utf-8") as f:
         return config_from_dict(yaml.safe_load(f))

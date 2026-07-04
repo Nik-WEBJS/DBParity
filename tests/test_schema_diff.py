@@ -1,4 +1,4 @@
-"""Юнит-тесты сверки структуры."""
+"""Unit tests for the schema comparison."""
 from dbparity.adapters.base import ColumnSchema, TableSchema
 from dbparity.core.schema_diff import diff_schemas, diff_table_schema
 
@@ -19,7 +19,7 @@ def test_clean_schema():
 
 
 def test_case_insensitive_matching():
-    # Oracle отдаёт UPPER, Postgres — lower: расхождением не является
+    # Oracle returns UPPER, Postgres lower: this is not a diff
     a = ts("t", [("ID", "number"), ("NAME", "text")], ["ID"])
     b = ts("t", [("id", "number"), ("name", "text")], ["id"])
     assert not diff_table_schema("t", a, b).has_diffs

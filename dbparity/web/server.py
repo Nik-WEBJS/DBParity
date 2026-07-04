@@ -1,13 +1,13 @@
-"""Локальная веб-консоль поверх ядра (stdlib-only, без flask/fastapi).
+"""Local web console on top of the core (stdlib-only, no flask/fastapi).
 
-`python -m dbparity.web` (или `dbparity serve`): страница с формой
-«путь к config.yaml», запуск сверок в фоновых потоках, live-прогресс
-поллингом и раздача готовых HTML/JSON-отчётов.
+`python -m dbparity.web` (or `dbparity serve`): a page with a
+"path to config.yaml" form, comparison runs in background threads,
+live progress via polling, and serving of the finished HTML/JSON reports.
 
-Безопасность: инструмент ЛОКАЛЬНЫЙ — слушает 127.0.0.1; файлы отдаются
-только по внутренним путям из словаря запусков (никакого path traversal
-из URL); пользовательские строки экранируются html.escape. Пути отчётов
-из конфига игнорируются — консоль пишет отчёты только в свой workdir.
+Security: the tool is LOCAL — it listens on 127.0.0.1; files are served
+only via internal paths from the runs dict (no path traversal from the
+URL); user strings are escaped with html.escape. Report paths from the
+config are ignored — the console writes reports only into its workdir.
 """
 from __future__ import annotations
 
@@ -25,11 +25,11 @@ from ..report.render import write_html, write_json
 
 _RUN_URL = re.compile(r"^/runs/(\d+)/report\.(html|json)$")
 _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
-_MAX_BODY = 1_000_000       # потолок тела запроса (DoS-защита)
+_MAX_BODY = 1_000_000       # request body ceiling (DoS protection)
 
 
 class ConsoleServer(ThreadingHTTPServer):
-    """HTTP-сервер консоли; состояние запусков живёт в памяти процесса."""
+    """The console HTTP server; run state lives in process memory."""
 
     daemon_threads = True
 
@@ -37,10 +37,11 @@ class ConsoleServer(ThreadingHTTPServer):
                  allow_remote: bool = False):
         if host not in _LOOPBACK and not allow_remote:
             raise ValueError(
-                f"Консоль не имеет аутентификации: бинд на {host!r} позволит "
-                "любому в сети запускать сверки с произвольными конфигами "
-                "(чтение локальных файлов, исходящие подключения). Оставьте "
-                "127.0.0.1 либо явно подтвердите риск флагом --allow-remote.")
+                f"The console has no authentication: binding to {host!r} "
+                "would let anyone on the network run comparisons with "
+                "arbitrary configs (reading local files, outbound "
+                "connections). Keep 127.0.0.1 or explicitly accept the "
+                "risk with the --allow-remote flag.")
         super().__init__((host, port), _Handler)
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
@@ -52,14 +53,14 @@ class ConsoleServer(ThreadingHTTPServer):
     def port(self) -> int:
         return self.server_address[1]
 
-    # ---- запуски -----------------------------------------------------------
+    # ---- runs ---------------------------------------------------------------
 
     def start_run(self, config_path: str) -> int:
-        """Валидирует конфиг и стартует сверку в фоне; ValueError → 400."""
+        """Validates the config and starts a comparison in the background; ValueError → 400."""
         p = Path(config_path).expanduser()
         if not p.exists():
-            raise ValueError(f"файл не найден: {p}")
-        cfg = load_config(p)                 # ValueError с текстом проблем
+            raise ValueError(f"file not found: {p}")
+        cfg = load_config(p)                 # ValueError with the problem text
         with self.lock:
             rid = self._next_id
             self._next_id += 1
@@ -84,7 +85,7 @@ class ConsoleServer(ThreadingHTTPServer):
 
         def worker() -> None:
             try:
-                # отчёты — только в workdir консоли (пути конфига игнорируем)
+                # reports go only into the console workdir (config paths are ignored)
                 cfg.report.html = None
                 cfg.report.json = None
                 run = engine.run(cfg, on_progress=on_progress)
@@ -98,7 +99,7 @@ class ConsoleServer(ThreadingHTTPServer):
                     r["total_diffs"] = run.totals["total_diffs"]
                     r["report_html"] = str(html_p)
                     r["report_json"] = str(json_p)
-            except Exception as e:  # noqa: BLE001 — статус в UI
+            except Exception as e:  # noqa: BLE001 — status goes to the UI
                 with self.lock:
                     self.runs[rid]["status"] = "error"
                     self.runs[rid]["error"] = f"{type(e).__name__}: {e}"
@@ -124,7 +125,7 @@ class ConsoleServer(ThreadingHTTPServer):
 class _Handler(BaseHTTPRequestHandler):
     server: ConsoleServer
 
-    def log_message(self, *args) -> None:   # noqa: D102 — тишина в консоли
+    def log_message(self, *args) -> None:   # noqa: D102 — keep the console quiet
         pass
 
     # ---- helpers ------------------------------------------------------------
@@ -140,9 +141,9 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
-    # ---- маршруты -----------------------------------------------------------
+    # ---- routes ---------------------------------------------------------------
 
-    def do_GET(self) -> None:  # noqa: N802 — API stdlib
+    def do_GET(self) -> None:  # noqa: N802 — stdlib API
         if self.path == "/" or self.path.startswith("/?"):
             self._send(200, _INDEX_HTML.encode("utf-8"),
                        "text/html; charset=utf-8")
@@ -169,14 +170,14 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             length = -1
         if length < 0 or length > _MAX_BODY:
-            self._json(413, {"error": "тело запроса слишком большое"})
+            self._json(413, {"error": "request body too large"})
             self.close_connection = True
             return
         try:
             data = json.loads(self.rfile.read(length) or b"{}")
             config_path = str(data.get("config_path", "")).strip()
             if not config_path:
-                raise ValueError("укажите путь к config.yaml")
+                raise ValueError("provide a path to config.yaml")
             rid = self.server.start_run(config_path)
         except (ValueError, json.JSONDecodeError) as e:
             self._json(400, {"error": html.escape(str(e))})
@@ -191,16 +192,16 @@ def create_server(host: str = "127.0.0.1", port: int = 8765,
 
 
 # ---------------------------------------------------------------------------
-# Страница консоли: Tabler CDN + ванильный JS с поллингом /api/runs.
-# Все данные приходят из API и вставляются через textContent (без XSS).
+# The console page: Tabler CDN + vanilla JS polling /api/runs.
+# All data comes from the API and is inserted via textContent (no XSS).
 # ---------------------------------------------------------------------------
 
 _INDEX_HTML = """<!doctype html>
-<html lang="ru" data-bs-theme="light">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>DBParity — консоль</title>
+  <title>DBParity — console</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"/>
 </head>
 <body>
@@ -208,9 +209,9 @@ _INDEX_HTML = """<!doctype html>
   <header class="navbar navbar-expand-md">
     <div class="container-xl">
       <h1 class="navbar-brand mb-0">
-        <span class="badge bg-blue text-white me-2">DB</span>Parity · консоль
+        <span class="badge bg-blue text-white me-2">DB</span>Parity · console
       </h1>
-      <span class="text-secondary">локальный инструмент — не выставляйте наружу</span>
+      <span class="text-secondary">local tool — do not expose to the network</span>
     </div>
   </header>
   <div class="page-wrapper"><div class="page-body"><div class="container-xl">
@@ -218,10 +219,10 @@ _INDEX_HTML = """<!doctype html>
     <div class="card mb-3"><div class="card-body">
       <div class="row g-2">
         <div class="col">
-          <input id="cfg" class="form-control" placeholder="путь к config.yaml"/>
+          <input id="cfg" class="form-control" placeholder="path to config.yaml"/>
         </div>
         <div class="col-auto">
-          <button id="go" class="btn btn-primary">Запустить сверку</button>
+          <button id="go" class="btn btn-primary">Run comparison</button>
         </div>
       </div>
       <div id="err" class="text-danger mt-2" style="display:none"></div>
@@ -246,17 +247,17 @@ async function refresh() {
   for (const r of runs) {
     const card = el('div', 'card mb-2');
     const body = el('div', 'card-body d-flex flex-wrap align-items-center gap-3');
-    const badge = r.status === 'running' ? el('span', 'badge bg-azure text-white', 'выполняется')
-      : r.status === 'error' ? el('span', 'badge bg-warning text-white', 'ошибка')
-      : r.equivalent ? el('span', 'badge bg-success text-white', 'ЭКВИВАЛЕНТНО')
-      : el('span', 'badge bg-danger text-white', 'расхождения: ' + r.total_diffs);
+    const badge = r.status === 'running' ? el('span', 'badge bg-azure text-white', 'running')
+      : r.status === 'error' ? el('span', 'badge bg-warning text-white', 'error')
+      : r.equivalent ? el('span', 'badge bg-success text-white', 'EQUIVALENT')
+      : el('span', 'badge bg-danger text-white', 'differences: ' + r.total_diffs);
     body.append(el('b', null, '#' + r.id), badge, el('code', null, r.config_path));
     const prog = Object.entries(r.progress || {})
       .map(([t, n]) => t + ': ' + n.toLocaleString('ru')).join(' · ');
     if (r.status === 'running' && prog) body.append(el('span', 'text-secondary', prog));
     if (r.error) body.append(el('span', 'text-danger', r.error));
     if (r.report_html) {
-      const a = el('a', 'btn btn-sm', 'HTML-отчёт');
+      const a = el('a', 'btn btn-sm', 'HTML report');
       a.href = '/runs/' + r.id + '/report.html'; a.target = '_blank';
       const j = el('a', 'btn btn-sm', 'JSON');
       j.href = '/runs/' + r.id + '/report.json'; j.target = '_blank';
@@ -275,7 +276,7 @@ document.getElementById('go').onclick = async () => {
     body: JSON.stringify({config_path: document.getElementById('cfg').value}),
   });
   if (!resp.ok) {
-    err.textContent = (await resp.json()).error || 'ошибка';
+    err.textContent = (await resp.json()).error || 'error';
     err.style.display = 'block';
   }
   refresh();

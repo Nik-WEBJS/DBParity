@@ -1,9 +1,9 @@
-"""Бенчмарк ядра сравнения: N строк × 2 стороны, generic vs fast-path.
+"""Core comparison benchmark: N rows x 2 sides, generic vs fast-path.
 
-Запуск: python3 bench/bench.py [N] [--rebuild] [--hash] [--json PATH]
-БД кэшируются в /tmp/dbparity_bench (имя зависит от N).
+Usage: python3 bench/bench.py [N] [--rebuild] [--hash] [--json PATH]
+Databases are cached in /tmp/dbparity_bench (the name depends on N).
 
---json PATH — после прогона записать метрики машиночитаемо (для CI):
+--json PATH - after the run, write the metrics machine-readably (for CI):
 {"n", "generic_rows_per_s", "fastpath_rows_per_s",
  "hash_rows_streamed", "hash_total_rows", "diffs_ok"}
 """
@@ -30,8 +30,8 @@ LOGICALS = ["number", "text", "text", "float", "number", "text", "text"]
 def gen(i: int, mutate: bool) -> tuple:
     bal = round((i * 7.13) % 9990, 2)
     if mutate and i % 3000 == 0:
-        bal = round(bal + 0.01, 2)          # N/3000 контролируемых расхождений
-    return (i, f"Клиент {i}", f"user{i}@example.com", bal, i % 2,
+        bal = round(bal + 0.01, 2)          # N/3000 controlled diffs
+    return (i, f"Client {i}", f"user{i}@example.com", bal, i % 2,
             f"2025-01-{1 + i % 28:02d}T12:00:00+00:00",
             "" if i % 7 == 0 else f"note {i}")
 
@@ -40,7 +40,7 @@ def build(path: Path, mutate: bool) -> None:
     if path.exists():
         path.unlink()
     conn = sqlite3.connect(path)
-    # NUMERIC (не REAL): колонка проходит по типам в hash-режим
+    # NUMERIC (not REAL): the column type-qualifies for hash mode
     conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, email TEXT,"
                  " balance NUMERIC, is_active INTEGER, created_at TEXT, notes TEXT)")
     batch = []
@@ -69,35 +69,35 @@ def stream(path: Path):
 
 
 def _json_arg() -> Path | None:
-    """Путь из аргумента `--json PATH` или None, если флаг не задан."""
+    """Path from the `--json PATH` argument, or None when the flag is absent."""
     if "--json" not in sys.argv:
         return None
     i = sys.argv.index("--json")
     if i + 1 >= len(sys.argv):
-        sys.exit("bench: после --json нужен путь к файлу")
+        sys.exit("bench: --json requires a file path")
     return Path(sys.argv[i + 1])
 
 
 def bench(label: str, src: Path, dst: Path, **kw) -> tuple[float, int]:
-    """Один потоковый замер; возвращает (длительность, число расхождений)."""
+    """One streaming measurement; returns (duration, diff count)."""
     norm = Normalizer(NormalizeRules(), dialect="oracle")
     t0 = time.perf_counter()
     r = compare_table("t", COLS, ["id"], stream(src), stream(dst),
                       norm, norm, **kw)
     dt = time.perf_counter() - t0
     rate = f"{int(2 * N / dt):,}".replace(",", " ")
-    print(f"{label:24s} {dt:7.2f} c   {rate:>11} строк/с   "
-          f"diffs={r.total_diffs} (ожидалось {N // 3000})")
+    print(f"{label:24s} {dt:7.2f} s   {rate:>11} rows/s   "
+          f"diffs={r.total_diffs} (expected {N // 3000})")
     return dt, r.total_diffs
 
 
 def bench_hash(src: Path) -> tuple:
-    """Целевой сценарий hash-режима: почти идентичные БД (3 расхождения).
+    """The target hash-mode scenario: nearly identical databases (3 diffs).
 
-    Возвращает (длительность, TableResult) — метрики нужны для --json.
+    Returns (duration, TableResult) - the metrics are needed for --json.
 
-    Замечание: в sqlite md5 — это Python-функция (дорого); на PG/Oracle
-    хэши считаются нативно, там выигрыш ещё больше.
+    Note: in sqlite md5 is a Python function (expensive); on PG/Oracle the
+    hashes are computed natively, so the win there is even larger.
     """
     import shutil
 
@@ -122,8 +122,8 @@ def bench_hash(src: Path) -> tuple:
     tr = run.tables[0]
     rate = f"{int(2 * N / dt):,}".replace(",", " ")
     streamed = f"{tr.rows_streamed:,}".replace(",", " ")
-    print(f"{'hash (3 диффа, DB-side)':24s} {dt:7.2f} c   {rate:>11} строк/с   "
-          f"diffs={tr.total_diffs} (потоково лишь {streamed} строк)")
+    print(f"{'hash (3 diffs, DB-side)':24s} {dt:7.2f} s   {rate:>11} rows/s   "
+          f"diffs={tr.total_diffs} (only {streamed} rows streamed)")
     return dt, tr
 
 
@@ -135,17 +135,17 @@ def main() -> None:
         t0 = time.perf_counter()
         build(src, mutate=False)
         build(dst, mutate=True)
-        print(f"Сид {2 * N:,} строк: {time.perf_counter() - t0:.1f} c".replace(",", " "))
-    print(f"Строк на сторону: {N:,}".replace(",", " "))
-    expected = N // 3000                    # контролируемые расхождения из gen()
+        print(f"Seeded {2 * N:,} rows: {time.perf_counter() - t0:.1f} s".replace(",", " "))
+    print(f"Rows per side: {N:,}".replace(",", " "))
+    expected = N // 3000                    # controlled diffs from gen()
     t_gen, d_gen = bench("generic (isinstance)", src, dst)
-    t_fast, d_fast = bench("fast-path (по типам)", src, dst,
+    t_fast, d_fast = bench("fast-path (typed)", src, dst,
                            src_logicals=LOGICALS, dst_logicals=LOGICALS)
-    # --json требует hash-метрик, поэтому форсирует hash-замер и на больших N
+    # --json needs the hash metrics, so it forces the hash run on large N too
     if N <= 400_000 or "--hash" in sys.argv or json_path is not None:
         t_hash, tr_hash = bench_hash(src)
-        print(f"Ускорение fast-path: ×{t_gen / t_fast:.2f}; "
-              f"hash-режим (3 диффа): ×{t_gen / t_hash:.2f}")
+        print(f"fast-path speedup: x{t_gen / t_fast:.2f}; "
+              f"hash mode (3 diffs): x{t_gen / t_hash:.2f}")
         if json_path is not None:
             payload = {
                 "n": N,
@@ -153,17 +153,17 @@ def main() -> None:
                 "fastpath_rows_per_s": int(2 * N / t_fast),
                 "hash_rows_streamed": tr_hash.rows_streamed,
                 "hash_total_rows": tr_hash.src_rows + tr_hash.dst_rows,
-                # True, если все счётчики расхождений совпали с ожидаемыми
+                # True when every diff counter matched the expected values
                 "diffs_ok": (d_gen == expected and d_fast == expected
                              and tr_hash.total_diffs == 3),
             }
             json_path.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8")
-            print(f"JSON-метрики: {json_path}")
+            print(f"JSON metrics: {json_path}")
     else:
-        print(f"Ускорение fast-path: ×{t_gen / t_fast:.2f} "
-              f"(hash-замер на N>400K: добавьте --hash)")
+        print(f"fast-path speedup: x{t_gen / t_fast:.2f} "
+              f"(hash run for N>400K: add --hash)")
 
 
 if __name__ == "__main__":

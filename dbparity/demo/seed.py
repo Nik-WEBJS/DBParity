@@ -1,8 +1,8 @@
-"""Демо-данные: две БД с заранее известными расхождениями.
+"""Demo data: two databases with differences known in advance.
 
-Источник эмулирует Oracle (dialect_emulation), приёмник — «мигрированный
-Postgres». Все расхождения детерминированы и описаны в EXPECTED —
-на них же опираются интеграционные тесты (sqlite и live-PostgreSQL).
+The source emulates Oracle (dialect_emulation), the target is a "migrated
+Postgres". All differences are deterministic and described in EXPECTED —
+the integration tests (sqlite and live PostgreSQL) rely on them too.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import yaml
 from ..config import Config, EndpointConfig, ReportConfig
 from ..core.normalize import NormalizeRules
 
-# Ожидаемые результаты демо-прогона (используются тестами)
+# Expected demo-run results (used by the tests)
 EXPECTED = {
     "customers": {"src_rows": 1200, "dst_rows": 1199, "matched": 1193,
                   "mismatched": 4, "missing_in_target": 3, "extra_in_target": 2},
@@ -26,10 +26,10 @@ EXPECTED = {
     "schema_diffs": {"orders": {"missing_in_target": ["discount"]}},
 }
 
-_FIRST = ["Алексей", "Мария", "Иван", "Ольга", "Дмитрий", "Анна",
-          "Сергей", "Елена", "Павел", "Наталья"]
-_LAST = ["Иванов", "Петрова", "Сидоров", "Кузнецова", "Смирнов",
-         "Попова", "Волков", "Соколова", "Морозов", "Новикова"]
+_FIRST = ["Alexey", "Maria", "Ivan", "Olga", "Dmitry", "Anna",
+          "Sergey", "Elena", "Pavel", "Natalia"]
+_LAST = ["Ivanov", "Petrova", "Sidorov", "Kuznetsova", "Smirnov",
+         "Popova", "Volkov", "Sokolova", "Morozov", "Novikova"]
 
 
 def _customer(i: int) -> dict:
@@ -41,7 +41,7 @@ def _customer(i: int) -> dict:
         "balance": round(10 + (i * 7.13) % 9990, 2),
         "is_active": 0 if i % 5 == 0 else 1,
         "created_at": f"2025-{1 + i % 12:02d}-{1 + i % 28:02d}T{i % 24:02d}:00:00+00:00",
-        "notes": "" if i % 7 == 0 else f"note {i}",   # '' в Oracle == NULL
+        "notes": "" if i % 7 == 0 else f"note {i}",   # '' in Oracle == NULL
     }
 
 
@@ -57,19 +57,19 @@ def _order(i: int) -> dict:
 
 
 def _product(i: int) -> dict:
-    return {"id": i, "sku": f"SKU-{i:05d}", "title": f"Товар {i}",
+    return {"id": i, "sku": f"SKU-{i:05d}", "title": f"Product {i}",
             "price": round(1 + (i * 1.99) % 500, 2)}
 
 
-# ---- генераторы строк (общие для sqlite-демо и live-PG теста) ---------------
+# ---- row generators (shared by the sqlite demo and the live-PG test) --------
 
 def src_customer_rows() -> list:
     rows = []
     for i in range(1, 1201):
         c = _customer(i)
-        if c["id"] == 60:   # ловушка: то же время, но в поясе +03:00
+        if c["id"] == 60:   # trap: the same time, but in the +03:00 zone
             c["created_at"] = "2025-03-01T12:00:00+03:00"
-        if c["id"] == 70:   # ловушка: CHAR-паддинг пробелами
+        if c["id"] == 70:   # trap: CHAR padding with spaces
             c["name"] = c["name"] + "   "
         rows.append(c)
     return rows
@@ -79,22 +79,22 @@ def dst_customer_rows() -> list:
     rows = []
     for i in range(1, 1201):
         c = _customer(i)
-        if c["id"] in (101, 102, 103):      # потеряны при миграции
+        if c["id"] in (101, 102, 103):      # lost during migration
             continue
-        if c["id"] == 10:                    # реальные расхождения:
-            c["name"] += " (переименован)"
+        if c["id"] == 10:                    # real differences:
+            c["name"] += " (renamed)"
         if c["id"] == 20:
             c["balance"] = round(c["balance"] + 0.01, 2)
         if c["id"] == 30:
             c["email"] = "changed30@example.com"
         if c["id"] == 40:
             c["is_active"] = 1 - c["is_active"]
-        if c["id"] == 60:                    # ловушки (расхождением НЕ являются):
+        if c["id"] == 60:                    # traps (they are NOT differences):
             c["created_at"] = "2025-03-01T09:00:00+00:00"
-        if c["notes"] == "":                 # Postgres хранит честный NULL
+        if c["notes"] == "":                 # Postgres stores an honest NULL
             c["notes"] = None
         rows.append(c)
-    rows.append({**_customer(2001), "notes": "note 2001"})   # лишние строки
+    rows.append({**_customer(2001), "notes": "note 2001"})   # extra rows
     rows.append({**_customer(2002), "notes": "note 2002"})
     return rows
 
@@ -104,7 +104,7 @@ def src_order_rows() -> list:
 
 
 def dst_order_rows() -> list:
-    """Без колонки discount («потерялась» при миграции) + 3 расхождения."""
+    """Without the discount column ("lost" during migration) + 3 differences."""
     rows = []
     for o in src_order_rows():
         o = {k: v for k, v in o.items() if k != "discount"}
@@ -120,7 +120,7 @@ def product_rows() -> list:
     return [_product(i) for i in range(1, 301)]
 
 
-# ---- сборка демо-БД ----------------------------------------------------------
+# ---- demo database assembly ---------------------------------------------------
 
 def build_demo(outdir: str | Path) -> Config:
     out = Path(outdir)
@@ -131,7 +131,7 @@ def build_demo(outdir: str | Path) -> Config:
         if p.exists():
             p.unlink()
 
-    # ---- ИСТОЧНИК («Oracle») ------------------------------------------------
+    # ---- SOURCE ("Oracle") ----------------------------------------------------
     src = sqlite3.connect(src_path)
     src.executescript("""
         CREATE TABLE customers (
@@ -156,13 +156,13 @@ def build_demo(outdir: str | Path) -> Config:
     src.commit()
     src.close()
 
-    # ---- ПРИЁМНИК («PostgreSQL после миграции») -----------------------------
+    # ---- TARGET ("PostgreSQL after migration") ---------------------------------
     dst = sqlite3.connect(dst_path)
     dst.executescript("""
         CREATE TABLE customers (
             id INTEGER PRIMARY KEY, name TEXT, email TEXT, balance REAL,
             is_active INTEGER, created_at TIMESTAMP, notes TEXT);
-        CREATE TABLE orders (  -- колонка discount «потерялась» при миграции
+        CREATE TABLE orders (  -- the discount column was "lost" during migration
             id INTEGER PRIMARY KEY, customer_id INTEGER, amount REAL,
             status TEXT, order_date DATE);
         CREATE TABLE products (
@@ -181,9 +181,9 @@ def build_demo(outdir: str | Path) -> Config:
     dst.commit()
     dst.close()
 
-    # ---- Конфиг -------------------------------------------------------------
+    # ---- Config -----------------------------------------------------------------
     cfg = Config(
-        source=EndpointConfig(type="sqlite", label="Oracle PROD (эмуляция)",
+        source=EndpointConfig(type="sqlite", label="Oracle PROD (emulated)",
                               options={"path": str(src_path),
                                        "dialect_emulation": "oracle"}),
         target=EndpointConfig(type="sqlite", label="PostgreSQL NEW",
@@ -192,9 +192,9 @@ def build_demo(outdir: str | Path) -> Config:
         report=ReportConfig(html=str(out / "dbparity_report.html"),
                             json=str(out / "dbparity_report.json")),
     )
-    # YAML-версия конфига — как образец для реальных прогонов
+    # The YAML version of the config — a sample for real runs
     (out / "demo_config.yaml").write_text(yaml.safe_dump({
-        "source": {"type": "sqlite", "label": "Oracle PROD (эмуляция)",
+        "source": {"type": "sqlite", "label": "Oracle PROD (emulated)",
                    "path": str(src_path), "dialect_emulation": "oracle"},
         "target": {"type": "sqlite", "label": "PostgreSQL NEW",
                    "path": str(dst_path)},

@@ -1,7 +1,7 @@
-"""Стриминговое сравнение двух упорядоченных по PK потоков строк.
+"""Streaming comparison of two PK-ordered row streams.
 
-Merge-алгоритм: O(n) по времени, O(batch) по памяти. Потоки обязаны быть
-отсортированы по первичному ключу на стороне БД (ORDER BY).
+Merge algorithm: O(n) in time, O(batch) in memory. The streams must be
+sorted by primary key on the database side (ORDER BY).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ _SENTINEL = object()
 
 
 def _lt(a: Sequence[Any], b: Sequence[Any]) -> bool:
-    """Поэлементное < для PK-кортежей; при разнотипье — фолбэк на строки."""
+    """Element-wise < for PK tuples; on type mismatch — fall back to strings."""
     for x, y in zip(a, b):
         if x == y:
             continue
@@ -42,7 +42,7 @@ def _display(value: Any, mask: bool, limit: int = 120) -> Any:
 
 
 class _Stream:
-    """Обёртка над потоком строк: нормализация, PK, детект дублей, счётчик."""
+    """Wrapper over a row stream: normalization, PK, duplicate detection, counter."""
 
     def __init__(self, rows: Iterable[tuple], norm_row, pk_idx: Sequence[int]):
         self._it = iter(rows)
@@ -51,7 +51,7 @@ class _Stream:
         self.raw: Any = None
         self.n: Optional[tuple] = None
         self.pk: Optional[tuple] = None
-        self.prev: Optional[tuple] = None   # последний потреблённый PK
+        self.prev: Optional[tuple] = None   # last consumed PK
         self.dup = False
         self.count = 0
         self.advance()
@@ -92,13 +92,14 @@ def compare_table(
     checkpoint_every: int = 0,
     track_max_idx: Optional[int] = None,
 ) -> TableResult:
-    # initial — восстановленный частичный результат (resume): счётчики
-    # продолжают накапливаться поверх него.
-    # track_max_idx — индекс watermark-колонки в columns (инкрементальный
-    # режим): во время merge отслеживается максимум НОРМАЛИЗОВАННЫХ значений
-    # этой колонки по обеим сторонам. Результат возвращается ДИНАМИЧЕСКИМ
-    # атрибутом res.max_tracked (models.py не расширяем; в dataclasses.asdict
-    # и чекпоинты атрибут не попадает). None — если строк не было.
+    # initial — a restored partial result (resume): counters keep
+    # accumulating on top of it.
+    # track_max_idx — index of the watermark column in columns (incremental
+    # mode): during the merge, the maximum of the NORMALIZED values of that
+    # column across both sides is tracked. The result is returned as the
+    # DYNAMIC attribute res.max_tracked (models.py is not extended; the
+    # attribute does not end up in dataclasses.asdict or checkpoints).
+    # None — if there were no rows.
     res = initial if initial is not None else TableResult(
         table=table, pk=list(pk_columns))
     pk_idx = [list(columns).index(c) for c in pk_columns]
@@ -118,13 +119,13 @@ def compare_table(
     D = _Stream(dst_rows, norm_dst.row_normalizer(dst_logicals), pk_idx)
     last_report = 0
     last_ckpt = 0
-    base_src, base_dst = res.src_rows, res.dst_rows   # база из initial (resume)
+    base_src, base_dst = res.src_rows, res.dst_rows   # base from initial (resume)
 
-    # res-независимый максимум watermark-колонки (см. док у track_max_idx)
+    # res-independent maximum of the watermark column (see track_max_idx doc)
     max_tracked = None
 
     def track(stream: _Stream) -> None:
-        """Учитывает текущую строку потока в максимуме watermark-колонки."""
+        """Accounts the stream's current row in the watermark-column maximum."""
         nonlocal max_tracked
         if stream.exhausted:
             return
@@ -134,7 +135,7 @@ def compare_table(
         if max_tracked is None:
             max_tracked = v
             return
-        try:                            # разнотипье — фолбэк на строки (как _lt)
+        try:                            # type mismatch — fall back to strings (like _lt)
             greater = max_tracked < v
         except TypeError:
             greater = str(max_tracked) < str(v)
@@ -143,8 +144,8 @@ def compare_table(
 
     while not (S.exhausted and D.exhausted):
         if track_max_idx is not None:
-            # каждая потреблённая строка хотя бы раз «текущая» в начале
-            # итерации; повторный учёт той же строки максимум не меняет
+            # every consumed row is "current" at least once at the start of
+            # an iteration; re-counting the same row does not change the max
             track(S)
             track(D)
         if progress is not None:
@@ -155,23 +156,23 @@ def compare_table(
         if checkpoint is not None and checkpoint_every > 0:
             n = S.count + D.count
             if n - last_ckpt >= checkpoint_every:
-                # фронтир мержа: всё с pk < wm уже учтено
+                # merge frontier: everything with pk < wm is already counted
                 if S.exhausted:
                     wm = D.pk
                 elif D.exhausted:
                     wm = S.pk
                 else:
                     wm = S.pk if _lt(S.pk, D.pk) else D.pk
-                # дубликат на границе: wm совпадает с уже потреблённым PK —
-                # безопасной точки нет, откладываем чекпоинт
+                # duplicate at the boundary: wm equals an already consumed
+                # PK — no safe point, postpone the checkpoint
                 if wm is not None and wm != S.prev and wm != D.prev:
-                    # буферная (вытянутая, но не обработанная) строка каждой
-                    # стороны будет прочитана заново при resume — не считаем
+                    # the buffered (fetched but not processed) row of each
+                    # side will be re-read on resume — do not count it
                     res.src_rows = base_src + S.count - (0 if S.exhausted else 1)
                     res.dst_rows = base_dst + D.count - (0 if D.exhausted else 1)
                     checkpoint(res, wm[0])
                     last_ckpt = n
-        # NULL в PK: merge по такой строке невозможен — отдельная категория
+        # NULL in PK: merging on such a row is impossible — a separate category
         if not S.exhausted and None in S.pk:
             res.null_pk += 1
             add_sample(DiffKind.NULL_PK, S.raw)
@@ -219,5 +220,5 @@ def compare_table(
     res.src_rows = base_src + S.count
     res.dst_rows = base_dst + D.count
     if track_max_idx is not None:
-        res.max_tracked = max_tracked   # динамический атрибут (см. выше)
+        res.max_tracked = max_tracked   # dynamic attribute (see above)
     return res

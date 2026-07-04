@@ -61,15 +61,14 @@ exactly the field-report contribution described above.
 
 ## Code style
 
-- **Russian docstrings and comments are a deliberate project decision, not an
-  accident.** DBParity grew out of Oracle/MSSQL → PostgreSQL (including
-  Postgres Pro) migrations in the Russian-speaking market, and the maintainer
-  plus the first wave of field testers reason about these migration traps in
-  Russian — precise domain wording beats uniform English here. Everything
-  *user-facing* is English or bilingual: CLI output, config keys, report
-  contents, `docs/`, README (EN + RU). Please don't open PRs that merely
-  translate existing comments. New docstrings/comments may be written in
-  Russian or English — whichever lets you be more precise.
+- **English is the project's primary language.** DBParity grew out of
+  Oracle/MSSQL → PostgreSQL (including Postgres Pro) migrations in the
+  Russian-speaking market, and its early docstrings and comments were written
+  in Russian; ahead of the international launch, the codebase and the docs
+  were translated to English. Everything *user-facing* — CLI output, config
+  keys, report contents, `docs/`, README (EN, with a Russian mirror in
+  `README.ru.md`) — is English. Please write new docstrings and comments in
+  English.
 - **Conventional Commits** for commit messages and PR titles:
   `feat:`, `fix:`, `docs:`, `test:`, `perf:`, `refactor:`, `chore:`
   (scopes welcome, e.g. `feat(oracle): ...`).
@@ -113,4 +112,4 @@ exactly the field-report contribution described above.
 - Exit codes (`0/1/2`) and the JSON report schema are public API; breaking
   them is a major-version event.
 
-Fuller architecture notes live in [PLAN.md](PLAN.md) (in Russian).
+Fuller architecture notes live in [PLAN.md](PLAN.md).
